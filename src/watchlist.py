@@ -78,17 +78,19 @@ def remove_from_watchlist(item_id: int) -> str:
     return "已從清單移除"
 
 
-def get_watchlist_dataframe() -> pd.DataFrame:
-    """取得監看清單及當前價格.
+def get_watchlist_with_alerts() -> tuple:
+    """取得監看清單及當前價格，並回傳達標提示.
 
     Returns:
-        監看清單 DataFrame
+        (監看清單 DataFrame, 達標物品列表)
     """
     watchlist = load_watchlist()
     if not watchlist:
-        return pd.DataFrame({"訊息": ["清單為空，請先新增物品"]})
+        return pd.DataFrame({"訊息": ["清單為空，請先新增物品"]}), []
 
     data = []
+    alerts = []
+
     for item in watchlist:
         market_data = get_market_data(item["id"], DATA_CENTER)
         min_price = market_data.get("minPrice", 0) if market_data else 0
@@ -97,7 +99,8 @@ def get_watchlist_dataframe() -> pd.DataFrame:
         status = ""
         if target > 0 and min_price > 0:
             if min_price <= target:
-                status = "達標"
+                status = "✓ 達標"
+                alerts.append(f"{item['name']} 已達標！目前 {min_price:,} Gil")
             else:
                 status = f"還差 {min_price - target:,}"
 
@@ -109,7 +112,17 @@ def get_watchlist_dataframe() -> pd.DataFrame:
             "狀態": status,
         })
 
-    return pd.DataFrame(data)
+    return pd.DataFrame(data), alerts
+
+
+def get_watchlist_dataframe() -> pd.DataFrame:
+    """取得監看清單及當前價格.
+
+    Returns:
+        監看清單 DataFrame
+    """
+    df, _ = get_watchlist_with_alerts()
+    return df
 
 
 def add_item_to_list(

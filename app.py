@@ -12,9 +12,17 @@ from src.display import (
 )
 from src.watchlist import (
     add_item_to_list,
-    get_watchlist_dataframe,
+    get_watchlist_with_alerts,
     remove_item_from_list,
 )
+
+
+def refresh_watchlist_with_notify():
+    """刷新監看清單並顯示達標通知."""
+    df, alerts = get_watchlist_with_alerts()
+    if alerts:
+        gr.Info("\n".join(alerts))
+    return df
 
 
 def create_app() -> gr.Blocks:
@@ -298,7 +306,7 @@ def _build_watchlist_tab() -> None:
         )
 
         refresh_list_btn.click(
-            fn=get_watchlist_dataframe,
+            fn=refresh_watchlist_with_notify,
             outputs=[watchlist_table],
         )
 
@@ -309,9 +317,9 @@ def _build_watchlist_tab() -> None:
             outputs=[watchlist_timer],
         )
 
-        # 計時器觸發刷新
+        # 計時器觸發刷新（自動刷新也會顯示通知）
         watchlist_timer.tick(
-            fn=get_watchlist_dataframe,
+            fn=refresh_watchlist_with_notify,
             outputs=[watchlist_table],
         )
 
