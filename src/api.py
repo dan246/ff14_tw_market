@@ -101,15 +101,28 @@ def search_items(query: str, limit: int = 20) -> list:
 
 
 def get_item_info(item_id: int) -> dict:
-    """取得物品詳細資訊 - 嘗試多個來源.
+    """取得物品詳細資訊 - 優先使用 Cafemaker（支援中文）.
 
     Args:
         item_id: 物品 ID
 
     Returns:
-        物品資訊字典
+        物品資訊字典（名稱已轉換為繁體中文）
     """
-    # 嘗試 XIVAPI
+    # 優先使用 Cafemaker（支援中文）
+    try:
+        url = f"{CAFEMAKER_BASE}/item/{item_id}"
+        response = requests.get(url, timeout=API_TIMEOUT)
+        if response.status_code == 200:
+            data = response.json()
+            # 將簡體名稱轉換為繁體
+            if data.get("Name"):
+                data["Name"] = _s2t_converter.convert(data["Name"])
+            return data
+    except requests.RequestException as e:
+        print(f"Cafemaker 取得物品資訊錯誤: {e}")
+
+    # 備用：嘗試 XIVAPI
     try:
         url = f"{XIVAPI_BASE}/item/{item_id}"
         params = {"language": "en"}
@@ -119,17 +132,8 @@ def get_item_info(item_id: int) -> dict:
     except requests.RequestException as e:
         print(f"XIVAPI 取得物品資訊錯誤: {e}")
 
-    # 備用：嘗試 Cafemaker
-    try:
-        url = f"{CAFEMAKER_BASE}/item/{item_id}"
-        response = requests.get(url, timeout=API_TIMEOUT)
-        if response.status_code == 200:
-            return response.json()
-    except requests.RequestException as e:
-        print(f"Cafemaker 取得物品資訊錯誤: {e}")
-
     # 如果都失敗，返回基本資訊
-    return {"ID": item_id, "Name": f"Item {item_id}", "LevelItem": 0}
+    return {"ID": item_id, "Name": f"物品 {item_id}", "LevelItem": 0}
 
 
 def get_market_data(item_id: int, world_or_dc: str = None) -> dict:
@@ -196,3 +200,88 @@ def get_upload_stats() -> dict:
     except requests.RequestException as e:
         print(f"取得上傳統計錯誤: {e}")
         return {}
+
+
+def get_recently_updated(world_or_dc: str = None, limit: int = 20) -> list:
+    """取得最近更新的物品列表.
+
+    Args:
+        world_or_dc: 伺服器或資料中心名稱
+        limit: 結果數量限制
+
+    Returns:
+        最近更新的物品 ID 列表
+    """
+    if world_or_dc is None:
+        world_or_dc = DATA_CENTER
+
+    # 如果是伺服器名稱，轉換為 world ID
+    world_id = WORLD_IDS.get(world_or_dc, world_or_dc)
+
+    try:
+        url = f"{UNIVERSALIS_BASE}/extra/stats/recently-updated"
+        params = {"world": world_id} if isinstance(world_id, int) else {"dcName": world_or_dc}
+        response = requests.get(url, params=params, timeout=API_TIMEOUT)
+        response.raise_for_status()
+        data = response.json()
+        return data.get("items", [])[:limit]
+    except requests.RequestException as e:
+        print(f"取得最近更新錯誤: {e}")
+        return []
+
+
+def get_recent_activity(world_or_dc: str = None, limit: int = 15) -> list:
+    """取得市場動態（最近更新的物品及其價格資訊）.
+
+    Args:
+        world_or_dc: 伺服器或資料中心名稱
+        limit: 結果數量限制
+
+    Returns:
+        市場動態列表，包含物品名稱、最低價等資訊
+    """
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+
+    item_ids = get_recently_updated(world_or_dc, limit)
+    if not item_ids:
+        return []
+
+    activity_list = []
+
+    def fetch_item_data(item_id: int) -> dict:
+        """取得單一物品的市場資料."""
+        item_info = get_item_info(item_id)
+        market_data = get_market_data(item_id, world_or_dc)
+
+        if not market_data:
+            return None
+
+        listings = market_data.get("listings", [])
+        nq_prices = [l["pricePerUnit"] for l in listings if not l.get("hq")]
+        hq_prices = [l["pricePerUnit"] for l in listings if l.get("hq")]
+
+        # 取得物品名稱並轉換為繁體
+        name = item_info.get("Name", f"物品 {item_id}")
+        name_traditional = _s2t_converter.convert(name)
+
+        return {
+            "id": item_id,
+            "name": name_traditional,
+            "nq_min": min(nq_prices) if nq_prices else None,
+            "hq_min": min(hq_prices) if hq_prices else None,
+            "listing_count": len(listings),
+            "last_update": market_data.get("lastUploadTime", 0),
+        }
+
+    # 並行請求物品資料
+    with ThreadPoolExecutor(max_workers=5) as executor:
+        futures = {executor.submit(fetch_item_data, item_id): item_id for item_id in item_ids}
+        for future in as_completed(futures):
+            result = future.result()
+            if result:
+                activity_list.append(result)
+
+    # 按更新時間排序（最新的在前）
+    activity_list.sort(key=lambda x: x["last_update"], reverse=True)
+
+    return activity_list

@@ -10,6 +10,7 @@ import gradio as gr
 from src.api import (
     get_item_info,
     get_market_data,
+    get_recent_activity,
     get_tax_rates,
     get_upload_stats,
     search_items,
@@ -115,16 +116,21 @@ def display_item_market(
             empty_fig,
         )
 
+    # 當選擇特定伺服器時，傳入伺服器名稱作為預設值
+    default_world = selected_world if selected_world != "全部伺服器" else None
+
     # 處理上架列表
     listings_df = process_listings(
         market_data.get("listings", []),
         quality_filter,
+        default_world,
     )
 
     # 處理交易歷史
     history_df = process_history(
         market_data.get("recentHistory", []),
         quality_filter,
+        default_world,
     )
 
     # 建立價格圖表
@@ -227,6 +233,37 @@ def display_tax_rates(selected_world: str) -> pd.DataFrame:
     ])
 
 
+def display_market_activity(selected_world: str) -> pd.DataFrame:
+    """顯示市場動態.
+
+    Args:
+        selected_world: 選擇的伺服器
+
+    Returns:
+        市場動態 DataFrame
+    """
+    world_query = selected_world if selected_world != "全部伺服器" else None
+    activity = get_recent_activity(world_query, limit=20)
+
+    if not activity:
+        return pd.DataFrame({"訊息": ["無法取得市場動態"]})
+
+    data = []
+    for item in activity:
+        nq_price = item["nq_min"]
+        hq_price = item["hq_min"]
+        data.append({
+            "物品 ID": item["id"],
+            "物品名稱": item["name"],
+            "NQ 最低價": format_price(nq_price) if nq_price else "-",
+            "HQ 最低價": format_price(hq_price) if hq_price else "-",
+            "上架數": item["listing_count"],
+            "更新時間": format_relative_time(item["last_update"]),
+        })
+
+    return pd.DataFrame(data)
+
+
 def display_upload_stats() -> Tuple[pd.DataFrame, go.Figure]:
     """顯示上傳統計.
 
@@ -278,6 +315,7 @@ def create_app() -> gr.Blocks:
 
         with gr.Tabs():
             _build_market_tab()
+            _build_activity_tab()
             _build_watchlist_tab()
             _build_tax_tab()
             _build_stats_tab()
@@ -399,6 +437,65 @@ def _build_market_tab() -> None:
                 item_info, listings_table, history_table,
                 price_chart, comparison_table, comparison_chart,
             ],
+        )
+
+
+def _build_activity_tab() -> None:
+    """建立市場動態頁籤."""
+    with gr.TabItem("市場動態"):
+        gr.Markdown("""
+        ### 市場動態
+        顯示最近有價格更新的物品
+        """)
+
+        with gr.Row():
+            activity_world_select = gr.Dropdown(
+                label="選擇伺服器",
+                choices=["全部伺服器"] + WORLD_NAMES,
+                value="全部伺服器",
+            )
+            refresh_activity_btn = gr.Button("重新整理", variant="primary")
+            auto_refresh_activity = gr.Checkbox(
+                label="自動刷新 (60秒)",
+                value=False,
+            )
+
+        activity_table = gr.Dataframe(
+            headers=[
+                "物品 ID", "物品名稱", "NQ 最低價",
+                "HQ 最低價", "上架數", "更新時間",
+            ],
+            interactive=False,
+        )
+
+        # 自動刷新計時器
+        activity_timer = gr.Timer(value=60, active=False)
+
+        # 事件綁定
+        refresh_activity_btn.click(
+            fn=display_market_activity,
+            inputs=[activity_world_select],
+            outputs=[activity_table],
+        )
+
+        activity_world_select.change(
+            fn=display_market_activity,
+            inputs=[activity_world_select],
+            outputs=[activity_table],
+        )
+
+        # 自動刷新開關
+        auto_refresh_activity.change(
+            fn=lambda x: gr.Timer(active=x),
+            inputs=[auto_refresh_activity],
+            outputs=[activity_timer],
+        )
+
+        # 計時器觸發刷新
+        activity_timer.tick(
+            fn=display_market_activity,
+            inputs=[activity_world_select],
+            outputs=[activity_table],
         )
 
 

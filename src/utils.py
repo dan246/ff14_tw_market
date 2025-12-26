@@ -72,12 +72,17 @@ def format_relative_time(timestamp: int) -> str:
     return "剛剛"
 
 
-def process_listings(listings: list, quality: str = "all") -> pd.DataFrame:
+def process_listings(
+    listings: list,
+    quality: str = "all",
+    default_world: str = None,
+) -> pd.DataFrame:
     """處理上架列表.
 
     Args:
         listings: 上架資料列表
         quality: 品質篩選（"all", "nq", "hq"）
+        default_world: 預設伺服器名稱（當 API 未返回 worldID 時使用）
 
     Returns:
         處理後的 DataFrame
@@ -92,8 +97,14 @@ def process_listings(listings: list, quality: str = "all") -> pd.DataFrame:
         if quality == "nq" and listing.get("hq"):
             continue
 
-        world_id = listing.get("worldID")
-        world_name = WORLDS.get(world_id, str(world_id))
+        # 優先使用 worldName，其次使用 worldID 對應，最後使用預設值
+        world_name = listing.get("worldName")
+        if not world_name:
+            world_id = listing.get("worldID")
+            if world_id:
+                world_name = WORLDS.get(world_id, str(world_id))
+            else:
+                world_name = default_world or "-"
 
         data.append({
             "品質": "HQ" if listing.get("hq") else "NQ",
@@ -108,12 +119,17 @@ def process_listings(listings: list, quality: str = "all") -> pd.DataFrame:
     return pd.DataFrame(data)
 
 
-def process_history(entries: list, quality: str = "all") -> pd.DataFrame:
+def process_history(
+    entries: list,
+    quality: str = "all",
+    default_world: str = None,
+) -> pd.DataFrame:
     """處理交易歷史.
 
     Args:
         entries: 交易記錄列表
         quality: 品質篩選（"all", "nq", "hq"）
+        default_world: 預設伺服器名稱（當 API 未返回 worldID 時使用）
 
     Returns:
         處理後的 DataFrame
@@ -128,8 +144,14 @@ def process_history(entries: list, quality: str = "all") -> pd.DataFrame:
         if quality == "nq" and entry.get("hq"):
             continue
 
-        world_id = entry.get("worldID")
-        world_name = WORLDS.get(world_id, str(world_id))
+        # 優先使用 worldName，其次使用 worldID 對應，最後使用預設值
+        world_name = entry.get("worldName")
+        if not world_name:
+            world_id = entry.get("worldID")
+            if world_id:
+                world_name = WORLDS.get(world_id, str(world_id))
+            else:
+                world_name = default_world or "-"
 
         data.append({
             "品質": "HQ" if entry.get("hq") else "NQ",
