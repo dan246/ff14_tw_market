@@ -1,90 +1,23 @@
-"""監看清單管理."""
+"""監看清單管理（使用瀏覽器 LocalStorage）."""
 
-import json
 from datetime import datetime
+from typing import Tuple
 
 import pandas as pd
 
 from .api import get_item_info, get_market_data
-from .config import DATA_CENTER, WATCHLIST_FILE
+from .config import DATA_CENTER
 
 
-def load_watchlist() -> list:
-    """載入監看清單.
-
-    Returns:
-        監看清單列表
-    """
-    try:
-        with open(WATCHLIST_FILE, "r", encoding="utf-8") as f:
-            return json.load(f)
-    except (FileNotFoundError, json.JSONDecodeError):
-        return []
-
-
-def save_watchlist(watchlist: list) -> None:
-    """儲存監看清單.
-
-    Args:
-        watchlist: 監看清單列表
-    """
-    with open(WATCHLIST_FILE, "w", encoding="utf-8") as f:
-        json.dump(watchlist, f, ensure_ascii=False, indent=2)
-
-
-def add_to_watchlist(
-    item_id: int,
-    item_name: str,
-    target_price: int = 0,
-) -> str:
-    """新增物品到監看清單.
-
-    Args:
-        item_id: 物品 ID
-        item_name: 物品名稱
-        target_price: 目標價格
-
-    Returns:
-        操作結果訊息
-    """
-    watchlist = load_watchlist()
-
-    # 檢查是否已存在
-    if any(item["id"] == item_id for item in watchlist):
-        return "物品已在清單中"
-
-    watchlist.append({
-        "id": item_id,
-        "name": item_name,
-        "target_price": target_price,
-        "added_time": datetime.now().isoformat(),
-    })
-    save_watchlist(watchlist)
-    return f"已新增 {item_name} 到監看清單"
-
-
-def remove_from_watchlist(item_id: int) -> str:
-    """從監看清單移除物品.
-
-    Args:
-        item_id: 物品 ID
-
-    Returns:
-        操作結果訊息
-    """
-    watchlist = load_watchlist()
-    watchlist = [item for item in watchlist if item["id"] != item_id]
-    save_watchlist(watchlist)
-    return "已從清單移除"
-
-
-def get_watchlist_with_alerts() -> tuple:
+def get_watchlist_with_alerts(watchlist: list) -> Tuple[pd.DataFrame, list]:
     """取得監看清單及當前價格，並回傳達標提示.
+
+    Args:
+        watchlist: 監看清單列表（從 BrowserState 傳入）
 
     Returns:
         (監看清單 DataFrame, 達標物品列表)
     """
-    watchlist = load_watchlist()
     if not watchlist:
         return pd.DataFrame({"訊息": ["清單為空，請先新增物品"]}), []
 
@@ -115,55 +48,70 @@ def get_watchlist_with_alerts() -> tuple:
     return pd.DataFrame(data), alerts
 
 
-def get_watchlist_dataframe() -> pd.DataFrame:
-    """取得監看清單及當前價格.
-
-    Returns:
-        監看清單 DataFrame
-    """
-    df, _ = get_watchlist_with_alerts()
-    return df
-
-
 def add_item_to_list(
     item_selection: int,
     target_price: float,
-) -> tuple[str, pd.DataFrame]:
-    """新增物品到清單（Gradio 回調函數）.
+    watchlist: list,
+) -> Tuple[str, pd.DataFrame, list]:
+    """新增物品到清單.
 
     Args:
         item_selection: 選擇的物品 ID
         target_price: 目標價格
+        watchlist: 目前的監看清單
 
     Returns:
-        (訊息, 更新後的清單 DataFrame)
+        (訊息, 更新後的清單 DataFrame, 更新後的 watchlist)
     """
+    if watchlist is None:
+        watchlist = []
+
     if not item_selection:
-        return "請先選擇物品", get_watchlist_dataframe()
+        df, _ = get_watchlist_with_alerts(watchlist)
+        return "請先選擇物品", df, watchlist
 
     item_id = item_selection
+
+    # 檢查是否已存在
+    if any(item["id"] == item_id for item in watchlist):
+        df, _ = get_watchlist_with_alerts(watchlist)
+        return "物品已在清單中", df, watchlist
+
     item_info = get_item_info(item_id)
     item_name = item_info.get("Name", f"物品 {item_id}")
 
-    msg = add_to_watchlist(
-        item_id,
-        item_name,
-        int(target_price) if target_price else 0,
-    )
-    return msg, get_watchlist_dataframe()
+    watchlist.append({
+        "id": item_id,
+        "name": item_name,
+        "target_price": int(target_price) if target_price else 0,
+        "added_time": datetime.now().isoformat(),
+    })
+
+    df, _ = get_watchlist_with_alerts(watchlist)
+    return f"已新增 {item_name}", df, watchlist
 
 
-def remove_item_from_list(item_id: float) -> tuple[str, pd.DataFrame]:
-    """從清單移除物品（Gradio 回調函數）.
+def remove_item_from_list(
+    item_id: float,
+    watchlist: list,
+) -> Tuple[str, pd.DataFrame, list]:
+    """從清單移除物品.
 
     Args:
         item_id: 物品 ID
+        watchlist: 目前的監看清單
 
     Returns:
-        (訊息, 更新後的清單 DataFrame)
+        (訊息, 更新後的清單 DataFrame, 更新後的 watchlist)
     """
-    if not item_id:
-        return "請輸入物品 ID", get_watchlist_dataframe()
+    if watchlist is None:
+        watchlist = []
 
-    remove_from_watchlist(int(item_id))
-    return "已移除", get_watchlist_dataframe()
+    if not item_id:
+        df, _ = get_watchlist_with_alerts(watchlist)
+        return "請輸入物品 ID", df, watchlist
+
+    watchlist = [item for item in watchlist if item["id"] != int(item_id)]
+
+    df, _ = get_watchlist_with_alerts(watchlist)
+    return "已移除", df, watchlist

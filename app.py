@@ -2,6 +2,10 @@
 
 import gradio as gr
 
+# 檢查 Gradio 版本，決定使用 BrowserState 或 State
+GRADIO_VERSION = int(gr.__version__.split(".")[0])
+USE_BROWSER_STATE = GRADIO_VERSION >= 5
+
 from src.config import POPULAR_ITEMS, WORLD_NAMES
 from src.display import (
     display_item_market,
@@ -17,9 +21,11 @@ from src.watchlist import (
 )
 
 
-def refresh_watchlist_with_notify():
+def refresh_watchlist_with_notify(watchlist: list):
     """刷新監看清單並顯示達標通知."""
-    df, alerts = get_watchlist_with_alerts()
+    if watchlist is None:
+        watchlist = []
+    df, alerts = get_watchlist_with_alerts(watchlist)
     if alerts:
         gr.Info("\n".join(alerts))
     return df
@@ -35,6 +41,15 @@ def create_app() -> gr.Blocks:
         title="FF14 繁中服市場板",
         theme=gr.themes.Soft(primary_hue="amber", neutral_hue="slate"),
     ) as app:
+        # 使用 BrowserState（Gradio 5+）或 State（Gradio 4）儲存監看清單
+        if USE_BROWSER_STATE:
+            watchlist_state = gr.BrowserState(
+                default_value=[],
+                storage_key="ff14_watchlist",
+            )
+        else:
+            watchlist_state = gr.State(value=[])
+
         gr.Markdown("""
         # FF14 繁中服市場板查詢工具
 
@@ -48,7 +63,7 @@ def create_app() -> gr.Blocks:
         with gr.Tabs():
             _build_market_tab()
             _build_activity_tab()
-            _build_watchlist_tab()
+            _build_watchlist_tab(watchlist_state)
             _build_tax_tab()
             _build_stats_tab()
 
@@ -239,12 +254,19 @@ def _build_activity_tab() -> None:
         )
 
 
-def _build_watchlist_tab() -> None:
+def _build_watchlist_tab(watchlist_state) -> None:
     """建立監看清單頁籤."""
     with gr.TabItem("監看清單"):
-        gr.Markdown("""
-        把想追蹤的物品加到清單，設定目標價格，低於目標時會提示你。
-        """)
+        if USE_BROWSER_STATE:
+            gr.Markdown("""
+            把想追蹤的物品加到清單，設定目標價格，低於目標時會提示你。
+            資料儲存在你的瀏覽器，不同裝置或瀏覽器的清單是獨立的。
+            """)
+        else:
+            gr.Markdown("""
+            把想追蹤的物品加到清單，設定目標價格，低於目標時會提示你。
+            注意：關閉網頁後清單會清空。
+            """)
 
         with gr.Row():
             with gr.Column(scale=2):
@@ -295,18 +317,19 @@ def _build_watchlist_tab() -> None:
 
         add_btn.click(
             fn=add_item_to_list,
-            inputs=[list_item_dropdown, target_price_input],
-            outputs=[add_status, watchlist_table],
+            inputs=[list_item_dropdown, target_price_input, watchlist_state],
+            outputs=[add_status, watchlist_table, watchlist_state],
         )
 
         remove_btn.click(
             fn=remove_item_from_list,
-            inputs=[remove_id_input],
-            outputs=[add_status, watchlist_table],
+            inputs=[remove_id_input, watchlist_state],
+            outputs=[add_status, watchlist_table, watchlist_state],
         )
 
         refresh_list_btn.click(
             fn=refresh_watchlist_with_notify,
+            inputs=[watchlist_state],
             outputs=[watchlist_table],
         )
 
@@ -317,9 +340,10 @@ def _build_watchlist_tab() -> None:
             outputs=[watchlist_timer],
         )
 
-        # 計時器觸發刷新（自動刷新也會顯示通知）
+        # 計時器觸發刷新
         watchlist_timer.tick(
             fn=refresh_watchlist_with_notify,
+            inputs=[watchlist_state],
             outputs=[watchlist_table],
         )
 

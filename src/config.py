@@ -55,9 +55,6 @@ POPULAR_ITEMS = {
     "水之水晶 / Water Crystal": 13,
 }
 
-# 監看清單儲存檔案
-WATCHLIST_FILE = "watchlist.json"
-
 # API 請求超時時間（秒）
 API_TIMEOUT = 10
 MARKET_API_TIMEOUT = 15
