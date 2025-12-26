@@ -76,6 +76,7 @@ def process_listings(
     listings: list,
     quality: str = "all",
     default_world: str = None,
+    retainer_filter: str = None,
 ) -> pd.DataFrame:
     """處理上架列表.
 
@@ -83,6 +84,7 @@ def process_listings(
         listings: 上架資料列表
         quality: 品質篩選（"all", "nq", "hq"）
         default_world: 預設伺服器名稱（當 API 未返回 worldID 時使用）
+        retainer_filter: 雇員名稱篩選（部分匹配，不區分大小寫）
 
     Returns:
         處理後的 DataFrame
@@ -96,6 +98,13 @@ def process_listings(
             continue
         if quality == "nq" and listing.get("hq"):
             continue
+
+        retainer_name = listing.get("retainerName", "")
+
+        # 雇員名稱篩選（部分匹配，不區分大小寫）
+        if retainer_filter:
+            if retainer_filter.lower() not in retainer_name.lower():
+                continue
 
         # 優先使用 worldName，其次使用 worldID 對應，最後使用預設值
         world_name = listing.get("worldName")
@@ -111,7 +120,7 @@ def process_listings(
             "單價": listing.get("pricePerUnit", 0),
             "數量": listing.get("quantity", 0),
             "總價": listing.get("total", 0),
-            "雇員": listing.get("retainerName", ""),
+            "雇員": retainer_name,
             "伺服器": world_name,
             "更新時間": format_relative_time(listing.get("lastReviewTime", 0)),
         })
