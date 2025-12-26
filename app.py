@@ -19,6 +19,7 @@ from src.watchlist import (
     get_watchlist_with_alerts,
     remove_item_from_list,
 )
+from src.ai_analysis import analyze_item_with_ai, get_market_summary
 
 
 def refresh_watchlist_with_notify(watchlist: list):
@@ -62,6 +63,7 @@ def create_app() -> gr.Blocks:
 
         with gr.Tabs():
             _build_market_tab()
+            _build_ai_tab()
             _build_activity_tab()
             _build_watchlist_tab(watchlist_state)
             _build_tax_tab()
@@ -391,6 +393,76 @@ def _build_stats_tab() -> None:
         refresh_stats_btn.click(
             fn=display_upload_stats,
             outputs=[stats_table, stats_chart],
+        )
+
+
+def _build_ai_tab() -> None:
+    """建立 AI 分析頁籤."""
+    with gr.TabItem("AI 分析"):
+        gr.Markdown("""
+        分析物品價格趨勢、跨服套利機會。
+        輸入你的 HuggingFace Token 可啟用 AI 買賣建議。
+        """)
+
+        with gr.Row():
+            with gr.Column(scale=2):
+                ai_search_input = gr.Textbox(
+                    label="搜尋物品",
+                    placeholder="輸入物品名稱或 ID",
+                    lines=1,
+                )
+                ai_item_dropdown = gr.Dropdown(
+                    label="選擇物品",
+                    choices=[
+                        (name, item_id)
+                        for name, item_id in POPULAR_ITEMS.items()
+                    ],
+                    interactive=True,
+                )
+
+            with gr.Column(scale=1):
+                hf_token_input = gr.Textbox(
+                    label="HuggingFace Token（選填）",
+                    placeholder="hf_xxxx...",
+                    type="password",
+                    lines=1,
+                )
+                gr.Markdown(
+                    "[免費申請 Token](https://huggingface.co/settings/tokens)",
+                    elem_classes=["small-text"],
+                )
+                analyze_btn = gr.Button("開始分析", variant="primary")
+                summary_btn = gr.Button("市場摘要", variant="secondary")
+
+        ai_result = gr.Markdown("")
+
+        # 事件綁定
+        ai_search_input.change(
+            fn=search_and_display,
+            inputs=[ai_search_input],
+            outputs=[ai_item_dropdown, gr.State(), gr.State()],
+        )
+
+        def run_ai_analysis(item_selection, user_token):
+            """執行 AI 分析."""
+            if not item_selection:
+                return "請先選擇一個物品"
+            # item_selection 是 (name, id) tuple 或單純的 id
+            if isinstance(item_selection, tuple):
+                item_id = item_selection[1]
+            else:
+                item_id = item_selection
+            return analyze_item_with_ai(int(item_id), user_token)
+
+        analyze_btn.click(
+            fn=run_ai_analysis,
+            inputs=[ai_item_dropdown, hf_token_input],
+            outputs=[ai_result],
+        )
+
+        summary_btn.click(
+            fn=get_market_summary,
+            outputs=[ai_result],
         )
 
 
