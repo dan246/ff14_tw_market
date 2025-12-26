@@ -123,13 +123,15 @@ def _find_arbitrage_opportunities(item_id: int) -> list:
 
     if min_price > 0:
         profit_pct = ((max_price - min_price) / min_price) * 100
-        if profit_pct > 15:  # 至少 15% 利潤才值得
+        # 只要有 5% 以上價差就顯示（玩家自己判斷是否值得）
+        if profit_pct >= 5:
             opportunities.append({
                 "buy_world": min_world,
                 "buy_price": min_price,
                 "sell_world": max_world,
                 "sell_price": max_price,
                 "profit_pct": round(profit_pct, 1),
+                "all_prices": world_prices,  # 附上所有伺服器價格
             })
 
     return opportunities
@@ -207,16 +209,26 @@ def analyze_item_with_ai(item_id: int, user_token: str = None) -> str:
 
     if arbitrage:
         opp = arbitrage[0]
+        all_prices = opp.get('all_prices', {})
+
+        # 按價格排序顯示所有伺服器
+        sorted_prices = sorted(all_prices.items(), key=lambda x: x[1])
+
         report += f"""
 ### 💰 跨服套利機會
-從 **{opp['buy_world']}** 買入 ({_format_price(opp['buy_price'])} Gil)
-到 **{opp['sell_world']}** 賣出 ({_format_price(opp['sell_price'])} Gil)
-預估利潤: **{opp['profit_pct']}%**
+**買入:** {opp['buy_world']} ({_format_price(opp['buy_price'])} Gil) ← 最低價
+**賣出:** {opp['sell_world']} ({_format_price(opp['sell_price'])} Gil) ← 最高價
+**價差:** {opp['profit_pct']}%
+
+**各伺服器價格（由低到高）:**
 """
+        for world, price in sorted_prices:
+            marker = "🟢" if world == opp['buy_world'] else ("🔴" if world == opp['sell_world'] else "⚪")
+            report += f"- {marker} {world}: {_format_price(price)} Gil\n"
     else:
         report += """
 ### 跨服套利
-目前各伺服器價差不大，沒有明顯套利機會。
+目前各伺服器價差小於 5%，沒有明顯套利機會。
 """
 
     # 嘗試用 AI 生成建議（需要使用者提供 token）
