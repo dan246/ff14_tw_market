@@ -50,6 +50,10 @@ def create_app() -> gr.Blocks:
 def _build_market_tab() -> None:
     """建立市場查詢頁籤."""
     with gr.TabItem("市場查詢"):
+        gr.Markdown("""
+        查詢物品的市場價格、上架情況和交易紀錄。
+        支援繁體中文搜尋，也可以直接貼上 Universalis 網址。
+        """)
         with gr.Row():
             with gr.Column(scale=2):
                 search_input = gr.Textbox(
@@ -173,8 +177,7 @@ def _build_activity_tab() -> None:
     """建立市場動態頁籤."""
     with gr.TabItem("市場動態"):
         gr.Markdown("""
-        ### 市場動態
-        顯示最近有價格更新的物品
+        最近有人上架或更新價格的物品，方便你看看現在市場在賣什麼。
         """)
 
         with gr.Row():
@@ -232,8 +235,7 @@ def _build_watchlist_tab() -> None:
     """建立監看清單頁籤."""
     with gr.TabItem("監看清單"):
         gr.Markdown("""
-        ### 物品監看清單
-        追蹤物品價格，設定目標價格提醒
+        把想追蹤的物品加到清單，設定目標價格，低於目標時會提示你。
         """)
 
         with gr.Row():
@@ -317,7 +319,9 @@ def _build_watchlist_tab() -> None:
 def _build_tax_tab() -> None:
     """建立稅率資訊頁籤."""
     with gr.TabItem("稅率資訊"):
-        gr.Markdown("### 市場稅率")
+        gr.Markdown("""
+        各城市的市場稅率，賣東西前可以先看看哪邊稅比較低。
+        """)
         tax_world_select = gr.Dropdown(
             label="選擇伺服器",
             choices=["全部伺服器"] + WORLD_NAMES,
@@ -343,7 +347,9 @@ def _build_tax_tab() -> None:
 def _build_stats_tab() -> None:
     """建立統計資訊頁籤."""
     with gr.TabItem("上傳統計"):
-        gr.Markdown("### 繁中服上傳統計")
+        gr.Markdown("""
+        各伺服器玩家上傳市場資料的次數。上傳越多，這裡的價格資訊就越準。
+        """)
         refresh_stats_btn = gr.Button("重新整理", variant="primary")
         with gr.Row():
             stats_table = gr.Dataframe(interactive=False)
