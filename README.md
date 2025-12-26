@@ -66,3 +66,4 @@ MIT License
 - [Universalis](https://universalis.app/) - 提供市場數據 API
 - [XIVAPI](https://xivapi.com/) - 提供物品資料 API
 - [FINAL FANTASY XIV](https://www.ffxiv.com.tw/) - SQUARE ENIX
+
