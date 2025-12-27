@@ -1,7 +1,10 @@
 """Universalis 和 XIVAPI 的 API 呼叫函數."""
 
+import asyncio
 import re
+from typing import Optional
 
+import aiohttp
 import requests
 from opencc import OpenCC
 
@@ -285,3 +288,215 @@ def get_recent_activity(world_or_dc: str = None, limit: int = 15) -> list:
     activity_list.sort(key=lambda x: x["last_update"], reverse=True)
 
     return activity_list
+
+
+# ============================================================
+# 異步 API 函數 (使用 aiohttp，速度更快)
+# ============================================================
+
+async def get_market_data_async(
+    item_id: int,
+    world_or_dc: str = None,
+    session: aiohttp.ClientSession = None,
+) -> dict:
+    """異步取得市場板數據.
+
+    Args:
+        item_id: 物品 ID
+        world_or_dc: 伺服器或資料中心名稱
+        session: 可選的 aiohttp session
+
+    Returns:
+        市場數據字典
+    """
+    if world_or_dc is None:
+        world_or_dc = DATA_CENTER
+
+    url = f"{UNIVERSALIS_BASE}/{world_or_dc}/{item_id}"
+    params = {"listings": 50, "entries": 50}
+
+    close_session = False
+    if session is None:
+        session = aiohttp.ClientSession()
+        close_session = True
+
+    try:
+        async with session.get(
+            url, params=params, timeout=aiohttp.ClientTimeout(total=MARKET_API_TIMEOUT)
+        ) as response:
+            if response.status == 200:
+                return await response.json()
+            return {}
+    except Exception as e:
+        print(f"異步取得市場數據錯誤: {e}")
+        return {}
+    finally:
+        if close_session:
+            await session.close()
+
+
+async def get_item_info_async(
+    item_id: int,
+    session: aiohttp.ClientSession = None,
+) -> dict:
+    """異步取得物品詳細資訊.
+
+    Args:
+        item_id: 物品 ID
+        session: 可選的 aiohttp session
+
+    Returns:
+        物品資訊字典
+    """
+    close_session = False
+    if session is None:
+        session = aiohttp.ClientSession()
+        close_session = True
+
+    try:
+        url = f"{CAFEMAKER_BASE}/item/{item_id}"
+        async with session.get(
+            url, timeout=aiohttp.ClientTimeout(total=API_TIMEOUT)
+        ) as response:
+            if response.status == 200:
+                data = await response.json()
+                if data.get("Name"):
+                    data["Name"] = _s2t_converter.convert(data["Name"])
+                return data
+    except Exception as e:
+        print(f"異步取得物品資訊錯誤: {e}")
+
+    # 備用：嘗試 XIVAPI
+    try:
+        url = f"{XIVAPI_BASE}/item/{item_id}"
+        params = {"language": "en"}
+        async with session.get(
+            url, params=params, timeout=aiohttp.ClientTimeout(total=API_TIMEOUT)
+        ) as response:
+            if response.status == 200:
+                return await response.json()
+    except Exception as e:
+        print(f"XIVAPI 異步取得物品資訊錯誤: {e}")
+    finally:
+        if close_session:
+            await session.close()
+
+    return {"ID": item_id, "Name": f"物品 {item_id}", "LevelItem": 0}
+
+
+async def get_multi_item_market_data_async(
+    item_ids: list[int],
+    world_or_dc: str = None,
+) -> dict:
+    """異步批量取得多個物品的市場數據.
+
+    Args:
+        item_ids: 物品 ID 列表
+        world_or_dc: 伺服器或資料中心名稱
+
+    Returns:
+        以物品 ID 為 key 的市場數據字典
+    """
+    if world_or_dc is None:
+        world_or_dc = DATA_CENTER
+
+    if not item_ids:
+        return {}
+
+    # Universalis 支援批量查詢，最多 100 個物品
+    ids_str = ",".join(str(i) for i in item_ids[:100])
+    url = f"{UNIVERSALIS_BASE}/{world_or_dc}/{ids_str}"
+    params = {"listings": 20, "entries": 20}
+
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.get(
+                url, params=params, timeout=aiohttp.ClientTimeout(total=MARKET_API_TIMEOUT)
+            ) as response:
+                if response.status == 200:
+                    data = await response.json()
+                    # 如果是單個物品，包裝成 items 格式
+                    if "items" not in data and "itemID" in data:
+                        return {data["itemID"]: data}
+                    return data.get("items", {})
+    except Exception as e:
+        print(f"批量取得市場數據錯誤: {e}")
+
+    return {}
+
+
+async def get_full_item_data_async(
+    item_id: int,
+    world_or_dc: str = None,
+) -> dict:
+    """異步取得物品的完整資料（物品資訊 + 市場數據）.
+
+    Args:
+        item_id: 物品 ID
+        world_or_dc: 伺服器或資料中心名稱
+
+    Returns:
+        包含 item_info 和 market_data 的字典
+    """
+    async with aiohttp.ClientSession() as session:
+        # 並行請求物品資訊和市場數據
+        item_info_task = get_item_info_async(item_id, session)
+        market_data_task = get_market_data_async(item_id, world_or_dc, session)
+
+        item_info, market_data = await asyncio.gather(
+            item_info_task, market_data_task
+        )
+
+        return {
+            "item_info": item_info,
+            "market_data": market_data,
+        }
+
+
+def get_market_data_fast(item_id: int, world_or_dc: str = None) -> dict:
+    """快速取得市場板數據（使用異步）.
+
+    這是 get_market_data 的快速版本，適合在 Gradio 中使用。
+
+    Args:
+        item_id: 物品 ID
+        world_or_dc: 伺服器或資料中心名稱
+
+    Returns:
+        市場數據字典
+    """
+    try:
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        result = loop.run_until_complete(get_market_data_async(item_id, world_or_dc))
+        loop.close()
+        return result
+    except Exception as e:
+        print(f"快速取得市場數據錯誤: {e}")
+        # 回退到同步版本
+        return get_market_data(item_id, world_or_dc)
+
+
+def get_full_item_data_fast(item_id: int, world_or_dc: str = None) -> dict:
+    """快速取得物品完整資料（使用異步並行請求）.
+
+    Args:
+        item_id: 物品 ID
+        world_or_dc: 伺服器或資料中心名稱
+
+    Returns:
+        包含 item_info 和 market_data 的字典
+    """
+    try:
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        result = loop.run_until_complete(get_full_item_data_async(item_id, world_or_dc))
+        loop.close()
+        return result
+    except Exception as e:
+        print(f"快速取得完整資料錯誤: {e}")
+        # 回退到同步版本
+        return {
+            "item_info": get_item_info(item_id),
+            "market_data": get_market_data(item_id, world_or_dc),
+        }

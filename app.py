@@ -20,6 +20,7 @@ from src.watchlist import (
     remove_item_from_list,
 )
 from src.ai_analysis import analyze_item_with_ai, get_market_summary
+from src.websocket_api import start_websocket
 
 
 def refresh_watchlist_with_notify(watchlist: list):
@@ -59,6 +60,8 @@ def create_app() -> gr.Blocks:
         **支援伺服器:** 伊弗利特、迦樓羅、利維坦、鳳凰、奧汀、巴哈姆特、拉姆、泰坦
 
         > **搜尋提示:** 可輸入繁體中文、英文名稱、物品 ID，或貼上 Universalis 網址
+
+        🔗 **WebSocket 已連線** - 使用異步 API 加速查詢
         """)
 
         with gr.Tabs():
@@ -68,6 +71,7 @@ def create_app() -> gr.Blocks:
             _build_watchlist_tab(watchlist_state)
             _build_tax_tab()
             _build_stats_tab()
+            _build_changelog_tab()
 
     return app
 
@@ -117,7 +121,7 @@ def _build_market_tab() -> None:
                 with gr.Row():
                     search_btn = gr.Button("查詢市場", variant="primary")
                     auto_refresh = gr.Checkbox(
-                        label="自動刷新 (60秒)",
+                        label="自動刷新 (5秒)",
                         value=False,
                     )
 
@@ -152,8 +156,8 @@ def _build_market_tab() -> None:
             comparison_table = gr.Dataframe(interactive=False)
             comparison_chart = gr.Plot()
 
-        # 自動刷新用的隱藏計時器
-        timer = gr.Timer(value=60, active=False)
+        # 自動刷新用的計時器 (5秒，使用 WebSocket 緩存)
+        timer = gr.Timer(value=5, active=False)
 
         # 事件綁定
         search_input.change(
@@ -466,7 +470,50 @@ def _build_ai_tab() -> None:
         )
 
 
+def _build_changelog_tab() -> None:
+    """建立更新紀錄頁籤."""
+    with gr.TabItem("更新紀錄"):
+        gr.Markdown("""
+### v1.3.0 (2024-12)
+- 改用 WebSocket 驅動實時更新
+- 首次查詢用 REST API，之後用 WebSocket 緩存
+- 自動刷新改為 5 秒（使用緩存時幾乎無延遲）
+- 物品資訊與市場數據並行請求
+
+### v1.2.0 (2024-12)
+- 新增 AI 分析功能
+- 支援跨服套利判斷
+- 手機版面優化
+
+### v1.1.0 (2024-12)
+- 新增監看清單功能
+- 支援設定目標價格提醒
+- 資料儲存於瀏覽器 LocalStorage
+
+### v1.0.0 (2024-12)
+- 首次發布
+- 支援繁體中文搜尋物品
+- 市場價格查詢、交易紀錄
+- 跨伺服器比價
+- 稅率資訊、上傳統計
+
+---
+資料來源: [Universalis API](https://universalis.app/)
+        """)
+
+
 if __name__ == "__main__":
+    # 啟動 WebSocket 連線（背景執行）
+    print("啟動 WebSocket 連線...")
+    ws_client = start_websocket()
+
+    # 訂閱陸行鳥資料中心的所有伺服器更新
+    from src.config import WORLDS
+    for world_id in WORLDS.keys():
+        ws_client.subscribe("listings/add", world_id)
+        ws_client.subscribe("sales/add", world_id)
+    print("已訂閱陸行鳥資料中心的市場更新")
+
     application = create_app()
     application.launch(
         server_name="0.0.0.0",

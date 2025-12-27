@@ -7,7 +7,10 @@ import gradio as gr
 import pandas as pd
 import plotly.graph_objects as go
 
+import time
+
 from .api import (
+    get_full_item_data_fast,
     get_item_info,
     get_market_data,
     get_recent_activity,
@@ -15,6 +18,7 @@ from .api import (
     get_upload_stats,
     search_items,
 )
+from .websocket_api import get_ws_client
 from .charts import (
     create_cross_world_comparison,
     create_price_chart,
@@ -91,17 +95,43 @@ def display_item_market(
         return "", empty_df, empty_df, empty_fig, empty_df, empty_fig
 
     item_id = item_selection
-
-    # 取得物品資訊
-    item_info = get_item_info(item_id)
-    item_name = item_info.get("Name", f"物品 {item_id}")
-    item_level = item_info.get("LevelItem", 0)
-
-    # 取得市場數據
     world_query = (
         selected_world if selected_world != "全部伺服器" else DATA_CENTER
     )
-    market_data = get_market_data(item_id, world_query)
+
+    # 開始關注此物品的 WebSocket 更新
+    ws_client = get_ws_client()
+    if ws_client:
+        ws_client.watch_item(item_id)
+
+    # 檢查 WebSocket 是否有此物品的緩存數據
+    ws_data = None
+    if ws_client:
+        ws_data = ws_client.get_cached_data(item_id)
+
+    if ws_data and ws_data.get("data", {}).get("listings"):
+        # 使用 WebSocket 緩存的數據（更快）
+        cached = ws_data["data"]
+        item_info = get_item_info(item_id)  # 物品資訊還是用 API
+        market_data = {
+            "listings": cached.get("listings", []),
+            "recentHistory": cached.get("recentHistory", []),
+            "currentAveragePrice": cached.get("currentAveragePrice", 0),
+            "averagePrice": cached.get("averagePrice", 0),
+            "minPrice": cached.get("minPrice", 0),
+            "maxPrice": cached.get("maxPrice", 0),
+            "listingsCount": len(cached.get("listings", [])),
+            "regularSaleVelocity": cached.get("regularSaleVelocity", 0),
+            "lastUploadTime": int(ws_data["timestamp"] * 1000),
+        }
+    else:
+        # 首次查詢，使用 REST API
+        full_data = get_full_item_data_fast(item_id, world_query)
+        item_info = full_data.get("item_info", {})
+        market_data = full_data.get("market_data", {})
+
+    item_name = item_info.get("Name", f"物品 {item_id}")
+    item_level = item_info.get("LevelItem", 0)
 
     if not market_data:
         return (
