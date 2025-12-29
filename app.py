@@ -26,6 +26,14 @@ from src.crafting import (
     get_profitable_items,
     CRAFT_TYPES,
 )
+from src.shopping import (
+    parse_shopping_list,
+    resolve_item_ids,
+    calculate_shopping_cost,
+    format_shopping_result,
+    get_retainer_suggestions,
+    format_retainer_suggestions,
+)
 from src.websocket_api import start_websocket
 
 
@@ -73,6 +81,7 @@ def create_app() -> gr.Blocks:
         with gr.Tabs():
             _build_market_tab()
             _build_crafting_tab()
+            _build_shopping_tab()
             _build_ai_tab()
             _build_activity_tab()
             _build_watchlist_tab(watchlist_state)
@@ -369,6 +378,100 @@ def _build_crafting_tab() -> None:
                 )
 
 
+def _build_shopping_tab() -> None:
+    """建立購物清單與雇員銷售頁籤."""
+    with gr.TabItem("購物助手"):
+        gr.Markdown("""
+        購物清單計算最佳購買伺服器，雇員建議找出最值得賣的物品。
+        """)
+
+        with gr.Tabs():
+            # 購物清單
+            with gr.TabItem("購物清單"):
+                gr.Markdown("""
+                輸入想買的物品，自動計算各伺服器總價，找出最便宜的購買方案。
+
+                **格式**: 每行一個物品，可加數量（例如: `黃金礦 x10`）
+                """)
+
+                with gr.Row():
+                    with gr.Column(scale=2):
+                        shopping_input = gr.Textbox(
+                            label="購物清單",
+                            placeholder="黃金礦 x5\n白銀礦 x10\n祕銀錠 3",
+                            lines=8,
+                        )
+                    with gr.Column(scale=1):
+                        gr.Markdown("**範例格式:**\n- 物品名稱\n- 物品名稱 x數量\n- 物品名稱 *數量\n- 物品ID")
+                        calc_shopping_btn = gr.Button(
+                            "計算最佳購買方案",
+                            variant="primary",
+                        )
+
+                shopping_result = gr.Markdown("")
+
+                def run_shopping_calc(text):
+                    """執行購物清單計算."""
+                    if not text or not text.strip():
+                        return "請輸入購物清單"
+
+                    # 解析清單
+                    items = parse_shopping_list(text)
+                    if not items:
+                        return "無法解析購物清單，請檢查格式"
+
+                    # 解析物品 ID
+                    resolved = resolve_item_ids(items)
+
+                    # 計算成本
+                    result = calculate_shopping_cost(resolved)
+
+                    return format_shopping_result(result)
+
+                calc_shopping_btn.click(
+                    fn=run_shopping_calc,
+                    inputs=[shopping_input],
+                    outputs=[shopping_result],
+                )
+
+            # 雇員銷售建議
+            with gr.TabItem("雇員銷售建議"):
+                gr.Markdown("""
+                分析市場動態，找出銷售速度快且價格高的物品，幫你決定雇員該賣什麼。
+                """)
+
+                with gr.Row():
+                    retainer_world_select = gr.Dropdown(
+                        label="選擇伺服器",
+                        choices=["全部伺服器"] + WORLD_NAMES,
+                        value="全部伺服器",
+                    )
+                    refresh_retainer_btn = gr.Button(
+                        "分析銷售建議",
+                        variant="primary",
+                    )
+
+                retainer_status = gr.Markdown("點擊「分析銷售建議」開始...")
+                retainer_result = gr.Markdown("")
+
+                def run_retainer_analysis(world):
+                    """執行雇員銷售分析."""
+                    if world == "全部伺服器":
+                        world = None
+
+                    suggestions = get_retainer_suggestions(world, limit=20)
+                    if not suggestions:
+                        return "分析完成", "目前沒有找到推薦的銷售物品"
+
+                    return f"找到 {len(suggestions)} 個推薦物品", format_retainer_suggestions(suggestions)
+
+                refresh_retainer_btn.click(
+                    fn=run_retainer_analysis,
+                    inputs=[retainer_world_select],
+                    outputs=[retainer_status, retainer_result],
+                )
+
+
 def _build_activity_tab() -> None:
     """建立市場動態頁籤."""
     with gr.TabItem("市場動態"):
@@ -641,6 +744,11 @@ def _build_changelog_tab() -> None:
     """建立更新紀錄頁籤."""
     with gr.TabItem("更新紀錄"):
         gr.Markdown("""
+### v1.5.0 (2024-12)
+- 新增「購物助手」功能
+- 購物清單：輸入多個物品，計算各伺服器總價，找最便宜的購買方案
+- 雇員銷售建議：分析銷售速度與價格，推薦值得上架的物品
+
 ### v1.4.0 (2024-12)
 - 新增「製作利潤」功能
 - 計算製作成本 vs 市場售價
