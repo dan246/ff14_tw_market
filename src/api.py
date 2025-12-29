@@ -500,3 +500,165 @@ def get_full_item_data_fast(item_id: int, world_or_dc: str = None) -> dict:
             "item_info": get_item_info(item_id),
             "market_data": get_market_data(item_id, world_or_dc),
         }
+
+
+# ============================================================
+# 配方 API 函數 (Recipe)
+# ============================================================
+
+def get_recipe(recipe_id: int) -> dict:
+    """取得配方詳細資訊.
+
+    Args:
+        recipe_id: 配方 ID
+
+    Returns:
+        配方資訊字典
+    """
+    try:
+        url = f"{CAFEMAKER_BASE}/Recipe/{recipe_id}"
+        response = requests.get(url, timeout=API_TIMEOUT)
+        if response.status_code == 200:
+            data = response.json()
+            # 轉換名稱為繁體
+            if data.get("Name"):
+                data["Name"] = _s2t_converter.convert(data["Name"])
+            # 轉換產出物名稱
+            if data.get("ItemResult") and data["ItemResult"].get("Name"):
+                data["ItemResult"]["Name"] = _s2t_converter.convert(
+                    data["ItemResult"]["Name"]
+                )
+            # 轉換材料名稱
+            for i in range(10):
+                ingredient_key = f"ItemIngredient{i}"
+                if data.get(ingredient_key) and data[ingredient_key].get("Name"):
+                    data[ingredient_key]["Name"] = _s2t_converter.convert(
+                        data[ingredient_key]["Name"]
+                    )
+            return data
+    except requests.RequestException as e:
+        print(f"取得配方錯誤: {e}")
+    return {}
+
+
+def search_recipes(query: str, limit: int = 10) -> list:
+    """搜尋配方.
+
+    Args:
+        query: 搜尋關鍵字
+        limit: 結果數量限制
+
+    Returns:
+        配方列表
+    """
+    if not query:
+        return []
+
+    # 將繁體轉換為簡體（Cafemaker 使用簡體）
+    query_simplified = _t2s_converter.convert(query.strip())
+
+    try:
+        url = f"{CAFEMAKER_BASE}/search"
+        params = {
+            "string": query_simplified,
+            "indexes": "Recipe",
+            "limit": limit,
+        }
+        response = requests.get(url, params=params, timeout=API_TIMEOUT)
+        if response.status_code == 200:
+            data = response.json()
+            results = []
+            for item in data.get("Results", []):
+                results.append({
+                    "id": item.get("ID"),
+                    "name": _s2t_converter.convert(item.get("Name", "")),
+                    "icon": item.get("Icon", ""),
+                })
+            return results
+    except requests.RequestException as e:
+        print(f"搜尋配方錯誤: {e}")
+    return []
+
+
+def get_recipe_by_item_id(item_id: int) -> dict:
+    """根據產出物品 ID 查找配方.
+
+    Args:
+        item_id: 產出物品的 ID
+
+    Returns:
+        配方資訊字典，如果沒有配方則返回空字典
+    """
+    # 先取得物品資訊，檢查是否有 Recipes 欄位
+    item_info = get_item_info(item_id)
+
+    # 方法1: 從物品資訊的 Recipes 欄位直接取得配方 ID
+    recipes_list = item_info.get("Recipes", [])
+    if recipes_list:
+        # 取第一個配方（通常物品只有一個配方）
+        recipe_id = recipes_list[0].get("ID")
+        if recipe_id:
+            return get_recipe(recipe_id)
+
+    # 方法2: 搜尋配方（備用）
+    item_name = item_info.get("Name", "")
+    if not item_name:
+        return {}
+
+    recipes = search_recipes(item_name, limit=20)
+
+    # 找到產出物 ID 匹配的配方
+    for recipe in recipes:
+        recipe_data = get_recipe(recipe["id"])
+        if recipe_data.get("ItemResultTargetID") == item_id:
+            return recipe_data
+
+    return {}
+
+
+async def get_recipe_async(
+    recipe_id: int,
+    session: aiohttp.ClientSession = None,
+) -> dict:
+    """異步取得配方詳細資訊.
+
+    Args:
+        recipe_id: 配方 ID
+        session: 可選的 aiohttp session
+
+    Returns:
+        配方資訊字典
+    """
+    close_session = False
+    if session is None:
+        session = aiohttp.ClientSession()
+        close_session = True
+
+    try:
+        url = f"{CAFEMAKER_BASE}/Recipe/{recipe_id}"
+        async with session.get(
+            url, timeout=aiohttp.ClientTimeout(total=API_TIMEOUT)
+        ) as response:
+            if response.status == 200:
+                data = await response.json()
+                # 轉換名稱為繁體
+                if data.get("Name"):
+                    data["Name"] = _s2t_converter.convert(data["Name"])
+                if data.get("ItemResult") and data["ItemResult"].get("Name"):
+                    data["ItemResult"]["Name"] = _s2t_converter.convert(
+                        data["ItemResult"]["Name"]
+                    )
+                for i in range(10):
+                    ingredient_key = f"ItemIngredient{i}"
+                    if data.get(ingredient_key) and data[ingredient_key].get("Name"):
+                        data[ingredient_key]["Name"] = _s2t_converter.convert(
+                            data[ingredient_key]["Name"]
+                        )
+                return data
+    except Exception as e:
+        print(f"異步取得配方錯誤: {e}")
+    finally:
+        if close_session:
+            await session.close()
+
+    return {}

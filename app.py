@@ -20,6 +20,12 @@ from src.watchlist import (
     remove_item_from_list,
 )
 from src.ai_analysis import analyze_item_with_ai, get_market_summary
+from src.crafting import (
+    calculate_crafting_cost,
+    format_crafting_result,
+    get_profitable_items,
+    CRAFT_TYPES,
+)
 from src.websocket_api import start_websocket
 
 
@@ -66,6 +72,7 @@ def create_app() -> gr.Blocks:
 
         with gr.Tabs():
             _build_market_tab()
+            _build_crafting_tab()
             _build_ai_tab()
             _build_activity_tab()
             _build_watchlist_tab(watchlist_state)
@@ -200,6 +207,166 @@ def _build_market_tab() -> None:
                 price_chart, comparison_table, comparison_chart,
             ],
         )
+
+
+def _build_crafting_tab() -> None:
+    """建立製作利潤頁籤."""
+    with gr.TabItem("製作利潤"):
+        gr.Markdown("""
+        計算製作物品的成本與利潤，找出最賺錢的製作物品。
+        支援遞迴計算材料成本（比較買材料 vs 自己做哪個便宜）。
+        """)
+
+        with gr.Tabs():
+            # 單品利潤計算
+            with gr.TabItem("利潤計算"):
+                with gr.Row():
+                    with gr.Column(scale=2):
+                        craft_search_input = gr.Textbox(
+                            label="搜尋物品",
+                            placeholder="輸入要製作的物品名稱",
+                            lines=1,
+                        )
+                        craft_item_dropdown = gr.Dropdown(
+                            label="選擇物品",
+                            choices=[
+                                (name, item_id)
+                                for name, item_id in POPULAR_ITEMS.items()
+                            ],
+                            interactive=True,
+                        )
+
+                    with gr.Column(scale=1):
+                        craft_world_select = gr.Dropdown(
+                            label="選擇伺服器",
+                            choices=["全部伺服器"] + WORLD_NAMES,
+                            value="全部伺服器",
+                        )
+                        craft_recursive = gr.Checkbox(
+                            label="遞迴計算材料成本",
+                            value=True,
+                        )
+                        calc_profit_btn = gr.Button(
+                            "計算利潤",
+                            variant="primary",
+                        )
+
+                craft_result = gr.Markdown("")
+
+                # 事件綁定
+                craft_search_input.change(
+                    fn=search_and_display,
+                    inputs=[craft_search_input],
+                    outputs=[craft_item_dropdown, gr.State(), gr.State()],
+                )
+
+                def run_profit_calc(item_selection, world, recursive):
+                    """執行利潤計算."""
+                    if not item_selection:
+                        return "請先選擇一個物品"
+
+                    # item_selection 是 (name, id) tuple 或單純的 id
+                    if isinstance(item_selection, tuple):
+                        item_id = item_selection[1]
+                    else:
+                        item_id = item_selection
+
+                    if world == "全部伺服器":
+                        world = None
+
+                    result = calculate_crafting_cost(
+                        int(item_id), world, recursive=recursive
+                    )
+                    return format_crafting_result(result)
+
+                calc_profit_btn.click(
+                    fn=run_profit_calc,
+                    inputs=[craft_item_dropdown, craft_world_select, craft_recursive],
+                    outputs=[craft_result],
+                )
+
+            # 賺錢排行榜
+            with gr.TabItem("賺錢排行榜"):
+                gr.Markdown("""
+                掃描最近交易的物品，找出利潤最高的可製作物品。
+                """)
+
+                with gr.Row():
+                    rank_world_select = gr.Dropdown(
+                        label="選擇伺服器",
+                        choices=["全部伺服器"] + WORLD_NAMES,
+                        value="全部伺服器",
+                    )
+                    rank_craft_type = gr.Dropdown(
+                        label="職業篩選",
+                        choices=[("全部職業", -1)] + [
+                            (name, cid) for cid, name in CRAFT_TYPES.items()
+                        ],
+                        value=-1,
+                    )
+                    refresh_rank_btn = gr.Button(
+                        "刷新排行榜",
+                        variant="primary",
+                    )
+
+                rank_status = gr.Markdown("點擊「刷新排行榜」開始掃描...")
+
+                rank_table = gr.Dataframe(
+                    headers=[
+                        "物品名稱", "職業", "製作成本", "市場價(HQ)",
+                        "利潤", "利潤率", "推薦",
+                    ],
+                    interactive=False,
+                )
+
+                def run_rank_scan(world, craft_type_selection):
+                    """執行排行榜掃描."""
+                    if world == "全部伺服器":
+                        world = None
+
+                    # craft_type_selection 是 (name, id) tuple 或單純的 id
+                    if isinstance(craft_type_selection, tuple):
+                        craft_type = craft_type_selection[1]
+                    else:
+                        craft_type = craft_type_selection
+
+                    if craft_type == -1:
+                        craft_type = None
+
+                    results = get_profitable_items(world, craft_type, limit=20)
+
+                    if not results:
+                        return "沒有找到有利潤的製作物品", []
+
+                    # 轉換為表格資料
+                    table_data = []
+                    for r in results:
+                        # 推薦圖示
+                        rate = r.get("profit_rate_hq", 0)
+                        if rate >= 20:
+                            rec = "推薦"
+                        elif rate >= 10:
+                            rec = "可考慮"
+                        else:
+                            rec = "一般"
+
+                        table_data.append([
+                            r.get("item_name", ""),
+                            r.get("craft_type", ""),
+                            f"{r.get('craft_cost', 0):,}",
+                            f"{r.get('market_price_hq', 0):,}",
+                            f"{r.get('profit_hq', 0):,}",
+                            f"{r.get('profit_rate_hq', 0):+.1f}%",
+                            rec,
+                        ])
+
+                    return f"找到 {len(results)} 個有利潤的物品", table_data
+
+                refresh_rank_btn.click(
+                    fn=run_rank_scan,
+                    inputs=[rank_world_select, rank_craft_type],
+                    outputs=[rank_status, rank_table],
+                )
 
 
 def _build_activity_tab() -> None:
@@ -474,6 +641,13 @@ def _build_changelog_tab() -> None:
     """建立更新紀錄頁籤."""
     with gr.TabItem("更新紀錄"):
         gr.Markdown("""
+### v1.4.0 (2024-12)
+- 新增「製作利潤」功能
+- 計算製作成本 vs 市場售價
+- 遞迴計算材料成本（比較買 vs 自己做）
+- 賺錢排行榜：動態掃描最近交易物品
+- 職業篩選（木工、鍛冶、裁縫、烹調等）
+
 ### v1.3.0 (2024-12)
 - 改用 WebSocket 驅動實時更新
 - 首次查詢用 REST API，之後用 WebSocket 緩存
