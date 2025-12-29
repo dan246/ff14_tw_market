@@ -8,6 +8,10 @@ sdk_version: 5.9.1
 app_file: app.py
 pinned: false
 license: mit
+tags:
+  - data-visualization
+  - financial-analysis
+short_description: FF14 繁中服市場價格查詢與跨服比價工具
 ---
 
 # FF14 繁中服市場板查詢工具
