@@ -407,15 +407,30 @@ def is_currently_available(spawn_times: list[int], duration: int) -> tuple[bool,
     return False, int(min_time_until)
 
 
-def format_et_duration(minutes: int) -> str:
-    """格式化 ET 時間長度."""
-    if minutes >= 60:
-        hours = minutes // 60
-        mins = minutes % 60
+def et_to_real_seconds(et_minutes: int) -> int:
+    """將 ET 分鐘轉換為現實秒數.
+
+    1 ET 分鐘 = 現實 175/60 秒 ≈ 2.917 秒
+    """
+    return int(et_minutes * 175 / 60)
+
+
+def format_real_duration(et_minutes: int) -> str:
+    """將 ET 分鐘格式化為現實時間."""
+    real_seconds = et_to_real_seconds(et_minutes)
+    real_minutes = real_seconds // 60
+    remaining_seconds = real_seconds % 60
+
+    if real_minutes >= 60:
+        hours = real_minutes // 60
+        mins = real_minutes % 60
         if mins > 0:
-            return f"{hours}h {mins}m"
-        return f"{hours}h"
-    return f"{minutes}m"
+            return f"{hours}時{mins}分"
+        return f"{hours}時"
+    elif real_minutes > 0:
+        return f"{real_minutes}分{remaining_seconds}秒"
+    else:
+        return f"{remaining_seconds}秒"
 
 
 def get_current_collectables(job_filter: str = None) -> tuple[list, list]:
@@ -447,10 +462,10 @@ def get_current_collectables(job_filter: str = None) -> tuple[list, list]:
         item_data["time_value"] = time_value
 
         if is_available:
-            item_data["remaining_time"] = format_et_duration(time_value)
+            item_data["remaining_time"] = format_real_duration(time_value)
             available.append(item_data)
         else:
-            item_data["spawn_in"] = format_et_duration(time_value)
+            item_data["spawn_in"] = format_real_duration(time_value)
             upcoming.append(item_data)
 
     # 排序：可採集的按剩餘時間，即將出現的按等待時間
