@@ -34,6 +34,13 @@ from src.shopping import (
     get_retainer_suggestions,
     format_retainer_suggestions,
 )
+from src.collectables import (
+    get_eorzea_time_str,
+    get_current_collectables,
+    format_collectables_table,
+    refresh_collectables_data,
+    GATHERING_JOBS,
+)
 from src.websocket_api import start_websocket
 
 
@@ -82,6 +89,7 @@ def create_app() -> gr.Blocks:
             _build_market_tab()
             _build_crafting_tab()
             _build_shopping_tab()
+            _build_collectables_tab()
             _build_ai_tab()
             _build_activity_tab()
             _build_watchlist_tab(watchlist_state)
@@ -472,6 +480,118 @@ def _build_shopping_tab() -> None:
                 )
 
 
+def _build_collectables_tab() -> None:
+    """建立收藏品時間表頁籤."""
+    with gr.TabItem("收藏品時間表"):
+        gr.Markdown("""
+        大地使者（採礦工、園藝工、捕魚人）收藏品採集時間表。
+        顯示目前可採集和即將出現的收藏品，包含 ET 時間、地點、工票獎勵。
+        """)
+
+        with gr.Row():
+            et_time_display = gr.Markdown("**當前 ET 時間:** 載入中...")
+            job_filter_select = gr.Dropdown(
+                label="職業篩選",
+                choices=[("全部職業", "")] + [
+                    (name, name) for name in GATHERING_JOBS.values()
+                ],
+                value="",
+            )
+            refresh_coll_btn = gr.Button("重新整理", variant="primary")
+            auto_refresh_coll = gr.Checkbox(
+                label="自動刷新 (10秒)",
+                value=True,
+            )
+
+        gr.Markdown("### 目前可採集")
+        available_table = gr.Dataframe(
+            headers=[
+                "物品名稱", "職業", "等級", "地點", "座標",
+                "出現時間", "剩餘時間", "工票",
+            ],
+            interactive=False,
+        )
+
+        gr.Markdown("### 即將出現")
+        upcoming_table = gr.Dataframe(
+            headers=[
+                "物品名稱", "職業", "等級", "地點", "座標",
+                "出現時間", "等待時間", "工票",
+            ],
+            interactive=False,
+        )
+
+        with gr.Accordion("資料管理", open=False):
+            gr.Markdown("""
+            資料來源: [FFXIV Teamcraft](https://github.com/ffxiv-teamcraft/ffxiv-teamcraft)
+
+            資料會自動快取 7 天，如果資料過期或需要更新，請點擊下方按鈕。
+            """)
+            refresh_data_btn = gr.Button("強制刷新資料", variant="secondary")
+            refresh_data_status = gr.Markdown("")
+
+        # 自動刷新計時器 (10秒)
+        coll_timer = gr.Timer(value=10, active=True)
+
+        def update_collectables(job_filter):
+            """更新收藏品資料."""
+            if job_filter == "":
+                job_filter = None
+
+            et_time = get_eorzea_time_str()
+            available, upcoming = get_current_collectables(job_filter)
+
+            available_data = format_collectables_table(available, is_available=True)
+            upcoming_data = format_collectables_table(upcoming, is_available=False)
+
+            return (
+                f"**當前 ET 時間:** {et_time}",
+                available_data,
+                upcoming_data,
+            )
+
+        def force_refresh_data():
+            """強制刷新資料."""
+            try:
+                refresh_collectables_data()
+                return "資料刷新成功！"
+            except Exception as e:
+                return f"刷新失敗: {e}"
+
+        # 事件綁定
+        refresh_coll_btn.click(
+            fn=update_collectables,
+            inputs=[job_filter_select],
+            outputs=[et_time_display, available_table, upcoming_table],
+        )
+
+        job_filter_select.change(
+            fn=update_collectables,
+            inputs=[job_filter_select],
+            outputs=[et_time_display, available_table, upcoming_table],
+        )
+
+        # 自動刷新開關
+        auto_refresh_coll.change(
+            fn=lambda x: gr.Timer(active=x),
+            inputs=[auto_refresh_coll],
+            outputs=[coll_timer],
+        )
+
+        # 計時器觸發刷新
+        coll_timer.tick(
+            fn=update_collectables,
+            inputs=[job_filter_select],
+            outputs=[et_time_display, available_table, upcoming_table],
+        )
+
+        # 強制刷新資料
+        refresh_data_btn.click(
+            fn=force_refresh_data,
+            outputs=[refresh_data_status],
+        )
+
+
 def _build_activity_tab() -> None:
     """建立市場動態頁籤."""
     with gr.TabItem("市場動態"):
@@ -744,6 +864,14 @@ def _build_changelog_tab() -> None:
     """建立更新紀錄頁籤."""
     with gr.TabItem("更新紀錄"):
         gr.Markdown("""
+### v1.6.0 (2025-01)
+- 新增「收藏品時間表」功能
+- 顯示大地使者（採礦工、園藝工、捕魚人）收藏品採集時間
+- 即時 ET（艾歐澤亞時間）顯示
+- 顯示目前可採集和即將出現的收藏品
+- 包含採集地點、座標、工票獎勵
+- 資料自動快取，支援強制刷新
+
 ### v1.5.0 (2024-12)
 - 新增「購物助手」功能
 - 購物清單：輸入多個物品，計算各伺服器總價，找最便宜的購買方案
