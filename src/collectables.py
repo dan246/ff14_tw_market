@@ -183,6 +183,134 @@ CUSTOM_DELIVERY_NPCS = [
     },
 ]
 
+# 老主顧交納物品資料 (Custom Delivery Supply Items)
+# 每個好感度等級對應的物品 ID（製作、採集、釣魚各一）
+# 好感度 5 時解鎖全部物品，每週隨機選擇
+# 資料來源：XIVAPI SatisfactionSupply
+CUSTOM_DELIVERY_ITEMS = {
+    "熙洛·阿里亞珀": {
+        "unlock_level": 55,
+        "levels": {
+            1: {"crafting": 17549, "gathering": 17557, "fishing": 17562},
+            2: {"crafting": 17550, "gathering": 17558, "fishing": 17563},
+            3: {"crafting": 17551, "gathering": 17559, "fishing": 17564},
+            4: {"crafting": 17552, "gathering": 17560, "fishing": 17565},
+        },
+    },
+    "梅·娜格": {
+        "unlock_level": 60,
+        "levels": {
+            1: {"crafting": 20775, "gathering": 20780, "fishing": 20785},
+            2: {"crafting": 20776, "gathering": 20781, "fishing": 20786},
+            3: {"crafting": 20777, "gathering": 20782, "fishing": 20787},
+            4: {"crafting": 20778, "gathering": 20783, "fishing": 20788},
+        },
+    },
+    "紅": {
+        "unlock_level": 62,
+        "levels": {
+            1: {"crafting": 23143, "gathering": 23148, "fishing": 23071},
+            2: {"crafting": 23144, "gathering": 23149, "fishing": 23072},
+            3: {"crafting": 23145, "gathering": 23150, "fishing": 23073},
+            4: {"crafting": 23146, "gathering": 23151, "fishing": 23074},
+        },
+    },
+    "亞德基拉": {
+        "unlock_level": 60,
+        "levels": {
+            1: {"crafting": 24564, "gathering": 24569, "fishing": 24559},
+            2: {"crafting": 24565, "gathering": 24570, "fishing": 24560},
+            3: {"crafting": 24562, "gathering": 24567, "fishing": 24557},
+            4: {"crafting": 28194, "gathering": 28199, "fishing": 28189},
+        },
+    },
+    "凱·希爾": {
+        "unlock_level": 70,
+        "levels": {
+            1: {"crafting": 28194, "gathering": 28199, "fishing": 28189},
+            2: {"crafting": 30493, "gathering": 30498, "fishing": 30488},
+            3: {"crafting": 30494, "gathering": 30499, "fishing": 30489},
+            4: {"crafting": 30495, "gathering": 30500, "fishing": 30490},
+        },
+    },
+    "艾爾·圖": {
+        "unlock_level": 80,
+        "levels": {
+            1: {"crafting": 33225, "gathering": 33230, "fishing": 33220},
+            2: {"crafting": 33226, "gathering": 33231, "fishing": 33221},
+            3: {"crafting": 33227, "gathering": 33232, "fishing": 33222},
+            4: {"crafting": 33224, "gathering": 33229, "fishing": 33219},
+        },
+    },
+    "狄蘭達爾伯爵": {
+        "unlock_level": 80,
+        "levels": {
+            1: {"crafting": 36666, "gathering": 36671, "fishing": 36661},
+            2: {"crafting": 36667, "gathering": 36672, "fishing": 36662},
+            3: {"crafting": 36664, "gathering": 36669, "fishing": 36659},
+            4: {"crafting": 38815, "gathering": 38820, "fishing": 38810},
+        },
+    },
+    "阿梅莉安絲": {
+        "unlock_level": 80,
+        "levels": {
+            1: {"crafting": 38818, "gathering": 38823, "fishing": 38813},
+            2: {"crafting": 38815, "gathering": 38820, "fishing": 38810},
+            3: {"crafting": 41063, "gathering": 41068, "fishing": 41058},
+            4: {"crafting": 41064, "gathering": 41069, "fishing": 41059},
+        },
+    },
+    "瑪格拉特": {
+        "unlock_level": 80,
+        "levels": {
+            1: {"crafting": 41063, "gathering": 41068, "fishing": 41058},  # 緩解腰痛
+            2: {"crafting": 41064, "gathering": 41069, "fishing": 41059},  # 魅惑貓咪
+            3: {"crafting": 41065, "gathering": 41070, "fishing": 41060},  # 立體模型
+            4: {"crafting": 41066, "gathering": 41071, "fishing": 41061},  # 眼疲勞
+        },
+    },
+    "安登": {
+        "unlock_level": 90,
+        "levels": {
+            1: {"crafting": 41066, "gathering": 41071, "fishing": 41061},  # 眼疲勞
+            2: {"crafting": 41065, "gathering": 41070, "fishing": 41060},  # 立體模型
+            3: {"crafting": 41067, "gathering": 41072, "fishing": 41062},  # 研究員休息
+            4: {"crafting": 44850, "gathering": 44855, "fishing": 44334},  # 新列車/潤滑油
+        },
+    },
+    "尼托維凱": {
+        "unlock_level": 90,
+        "levels": {
+            1: {"crafting": 44850, "gathering": 44855, "fishing": 44334},  # 新列車/潤滑油
+            2: {"crafting": 44851, "gathering": 44856, "fishing": 44335},  # 客車內裝
+            3: {"crafting": 44852, "gathering": 44857, "fishing": 44336},  # 導覽地圖
+            4: {"crafting": 44853, "gathering": 44858, "fishing": 44337},  # 業務清潔劑
+        },
+    },
+}
+
+
+def format_custom_delivery_items_table() -> list:
+    """格式化老主顧交納物品為表格.
+
+    Returns:
+        表格資料列表，每行: [NPC名稱, 解鎖等級, 好感度, 製作品, 採集品, 釣魚品]
+    """
+    rows = []
+    for npc_name, data in CUSTOM_DELIVERY_ITEMS.items():
+        unlock_lv = data["unlock_level"]
+        for level, items in data["levels"].items():
+            rows.append([
+                _s2t_converter.convert(npc_name),
+                f"Lv {unlock_lv}",
+                f"好感度 {level}",
+                get_item_name_zh(items["crafting"]),
+                get_item_name_zh(items["gathering"]),
+                get_item_name_zh(items["fishing"]),
+            ])
+    return rows
+
+
 # 收藏品交易員 (Collectable Appraiser) 位置
 # 可隨時交納收藏品換取工票
 # 資料來源：Teamcraft + FFXIV Wiki

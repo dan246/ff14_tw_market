@@ -40,6 +40,7 @@ from src.collectables import (
     format_collectables_table,
     format_appraisers_table,
     format_custom_delivery_table,
+    format_custom_delivery_items_table,
     refresh_collectables_data,
     GATHERING_JOBS,
 )
@@ -523,10 +524,18 @@ def _build_collectables_tab() -> None:
             interactive=False,
         )
 
-        with gr.Accordion("老主顧位置一覽 (Custom Delivery)", open=False):
+        with gr.Accordion("老主顧交納物品一覽 (Custom Delivery)", open=False):
             gr.Markdown("""
-            **老主顧**是每週可交納收藏品獲得額外獎勵的 NPC：
+            **老主顧**是每週可交納收藏品獲得額外獎勵的 NPC。
+            每個老主顧有 5 個好感度等級，每級對應不同的物品。好感度達到 5 級後解鎖全部物品，每週隨機選擇。
             """)
+            custom_delivery_items_table = gr.Dataframe(
+                headers=["NPC 名稱", "解鎖等級", "好感度", "製作品", "採集品", "釣魚品"],
+                value=format_custom_delivery_items_table(),
+                interactive=False,
+            )
+
+        with gr.Accordion("老主顧位置一覽", open=False):
             custom_delivery_table = gr.Dataframe(
                 headers=["等級範圍", "NPC 名稱", "地點", "座標"],
                 value=format_custom_delivery_table(),
