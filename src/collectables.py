@@ -51,6 +51,8 @@ _collectables_cache: dict = {}
 _items_zh_cache: dict = {}
 _places_zh_cache: dict = {}
 _gathering_items_cache: dict = {}
+_fishing_sources_cache: dict = {}
+_fishing_spots_cache: dict = {}
 
 
 def get_eorzea_time() -> tuple[int, int]:
@@ -193,6 +195,28 @@ def load_gathering_items() -> dict:
     return _gathering_items_cache
 
 
+def load_fishing_sources() -> dict:
+    """載入釣魚來源資料."""
+    global _fishing_sources_cache
+    if not _fishing_sources_cache:
+        _fishing_sources_cache = _download_json(
+            f"{TEAMCRAFT_BASE}/fishing-sources.json",
+            "fishing-sources.json"
+        )
+    return _fishing_sources_cache
+
+
+def load_fishing_spots() -> dict:
+    """載入釣魚點資料."""
+    global _fishing_spots_cache
+    if not _fishing_spots_cache:
+        _fishing_spots_cache = _download_json(
+            f"{TEAMCRAFT_BASE}/fishing-spots.json",
+            "fishing-spots.json"
+        )
+    return _fishing_spots_cache
+
+
 def get_item_name_zh(item_id: int) -> str:
     """取得物品的繁體中文名稱."""
     items = load_items_zh()
@@ -282,6 +306,7 @@ def get_timed_collectables() -> list[dict]:
 
     results = []
 
+    # === 採礦工和園藝工的收藏品 ===
     for node_id, node_data in nodes.items():
         # 只處理有時間限制的節點
         spawns = node_data.get("spawns")
@@ -326,6 +351,67 @@ def get_timed_collectables() -> list[dict]:
                 "duration": node_data.get("duration", 120),  # 預設 2 ET 小時
                 "scrip_reward": scrip_reward,
             })
+
+    # === 捕魚人的收藏品 ===
+    fishing_sources = load_fishing_sources()
+    fishing_spots = load_fishing_spots()
+
+    # 建立釣魚點 ID -> 資料的映射
+    spots_map = {}
+    for spot in fishing_spots:
+        spots_map[spot.get("id")] = spot
+
+    for fish_id_str, sources in fishing_sources.items():
+        fish_id = int(fish_id_str)
+
+        # 只處理收藏品
+        if fish_id not in collectable_item_ids:
+            continue
+
+        # 找有時間限制的來源
+        for src in sources:
+            spawn = src.get("spawn")
+            duration = src.get("duration")
+            if spawn is None:
+                continue
+
+            # 取得釣魚點資訊
+            spot_id = src.get("spot")
+            spot_data = spots_map.get(spot_id, {})
+
+            # 取得地點名稱
+            zone_id = spot_data.get("zoneId", 0)
+            location = get_place_name_zh(zone_id)
+
+            # 取得座標
+            coords = spot_data.get("coords", {})
+            x = coords.get("x", 0) if isinstance(coords, dict) else 0
+            y = coords.get("y", 0) if isinstance(coords, dict) else 0
+
+            # 取得等級
+            level = spot_data.get("level", 0)
+
+            # 取得工票獎勵
+            scrip_reward = get_collectable_scrip_reward(fish_id)
+
+            # duration 是 ET 小時，轉換為 ET 分鐘
+            duration_minutes = int(duration * 60) if duration else 120
+
+            results.append({
+                "item_id": fish_id,
+                "item_name": get_item_name_zh(fish_id),
+                "job": "捕魚人",
+                "level": level,
+                "location": location,
+                "x": x,
+                "y": y,
+                "spawn_times": [spawn],  # 釣魚只有一個出現時間
+                "duration": duration_minutes,
+                "scrip_reward": scrip_reward,
+            })
+
+            # 每種魚只加一次（用第一個有時間限制的來源）
+            break
 
     # 按等級排序
     results.sort(key=lambda x: x["level"], reverse=True)
@@ -529,7 +615,7 @@ def format_collectables_table(collectables: list, is_available: bool) -> list:
 
 def refresh_collectables_data():
     """強制刷新收藏品資料（清除快取）."""
-    global _nodes_cache, _collectables_cache, _items_zh_cache, _places_zh_cache, _gathering_items_cache
+    global _nodes_cache, _collectables_cache, _items_zh_cache, _places_zh_cache, _gathering_items_cache, _fishing_sources_cache, _fishing_spots_cache
 
     # 清除記憶體快取
     _nodes_cache = {}
@@ -537,9 +623,11 @@ def refresh_collectables_data():
     _items_zh_cache = {}
     _places_zh_cache = {}
     _gathering_items_cache = {}
+    _fishing_sources_cache = {}
+    _fishing_spots_cache = {}
 
     # 刪除檔案快取
-    cache_files = ["nodes.json", "collectables.json", "zh-items.json", "zh-places.json", "gathering-items.json"]
+    cache_files = ["nodes.json", "collectables.json", "zh-items.json", "zh-places.json", "gathering-items.json", "fishing-sources.json", "fishing-spots.json"]
     for filename in cache_files:
         cache_path = DATA_DIR / filename
         if cache_path.exists():
