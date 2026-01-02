@@ -38,6 +38,8 @@ from src.collectables import (
     get_eorzea_time_str,
     get_current_collectables,
     format_collectables_table,
+    format_appraisers_table,
+    format_custom_delivery_table,
     refresh_collectables_data,
     GATHERING_JOBS,
 )
@@ -485,7 +487,7 @@ def _build_collectables_tab() -> None:
     with gr.TabItem("收藏品時間表"):
         gr.Markdown("""
         大地使者（採礦工、園藝工、捕魚人）收藏品採集時間表。
-        顯示目前可採集和即將出現的收藏品，包含 ET 時間、地點、工票獎勵。
+        顯示目前可採集和即將出現的收藏品，包含 ET 時間、地點、工票獎勵、老主顧 NPC 資訊。
         """)
 
         with gr.Row():
@@ -507,7 +509,7 @@ def _build_collectables_tab() -> None:
         available_table = gr.Dataframe(
             headers=[
                 "物品名稱", "職業", "等級", "地點", "座標",
-                "出現時間", "剩餘時間", "工票",
+                "出現時間", "剩餘時間", "工票", "老主顧",
             ],
             interactive=False,
         )
@@ -516,10 +518,30 @@ def _build_collectables_tab() -> None:
         upcoming_table = gr.Dataframe(
             headers=[
                 "物品名稱", "職業", "等級", "地點", "座標",
-                "出現時間", "等待時間", "工票",
+                "出現時間", "等待時間", "工票", "老主顧",
             ],
             interactive=False,
         )
+
+        with gr.Accordion("老主顧位置一覽 (Custom Delivery)", open=False):
+            gr.Markdown("""
+            **老主顧**是每週可交納收藏品獲得額外獎勵的 NPC：
+            """)
+            custom_delivery_table = gr.Dataframe(
+                headers=["等級範圍", "NPC 名稱", "地點", "座標"],
+                value=format_custom_delivery_table(),
+                interactive=False,
+            )
+
+        with gr.Accordion("收藏品交易員位置一覽", open=False):
+            gr.Markdown("""
+            **收藏品交易員**可隨時交納收藏品換取工票（無每週限制）：
+            """)
+            appraiser_table = gr.Dataframe(
+                headers=["等級範圍", "NPC 名稱", "地點", "座標"],
+                value=format_appraisers_table(),
+                interactive=False,
+            )
 
         with gr.Accordion("資料管理", open=False):
             gr.Markdown("""
@@ -864,6 +886,11 @@ def _build_changelog_tab() -> None:
     """建立更新紀錄頁籤."""
     with gr.TabItem("更新紀錄"):
         gr.Markdown("""
+### v1.6.1 (2025-01)
+- 收藏品時間表新增「老主顧」NPC 資訊
+- 顯示對應等級範圍的老主顧名稱與位置座標
+- 新增「老主顧位置一覽」快速參考表
+
 ### v1.6.0 (2025-01)
 - 新增「收藏品時間表」功能
 - 顯示大地使者（採礦工、園藝工、捕魚人）收藏品採集時間

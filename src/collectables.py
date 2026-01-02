@@ -53,6 +53,291 @@ _places_zh_cache: dict = {}
 _gathering_items_cache: dict = {}
 _fishing_sources_cache: dict = {}
 _fishing_spots_cache: dict = {}
+_npcs_cache: dict = {}
+_npcs_zh_cache: dict = {}
+
+# 老主顧 NPC 資料 (Custom Delivery NPCs)
+# 每週可交納收藏品獲得額外獎勵
+# 資料來源：Teamcraft + FFXIV Wiki
+CUSTOM_DELIVERY_NPCS = [
+    {
+        "level_min": 50,
+        "level_max": 60,
+        "npc_id": 1019615,
+        "npc_name_zh": "熙洛·阿里亞珀",
+        "npc_name_en": "Zhloe Aliapoh",
+        "location_zh": "田園郡",
+        "zone_id": 2082,
+        "x": 4.6,
+        "y": 6.7,
+    },
+    {
+        "level_min": 60,
+        "level_max": 70,
+        "npc_id": 1018393,
+        "npc_name_zh": "亞德基拉",
+        "npc_name_en": "Adkiragh",
+        "location_zh": "田園郡",
+        "zone_id": 2082,
+        "x": 4.9,
+        "y": 6.6,
+    },
+    {
+        "level_min": 60,
+        "level_max": 70,
+        "npc_id": 1020395,
+        "npc_name_zh": "梅·娜格",
+        "npc_name_en": "M'naago",
+        "location_zh": "神拳痕",
+        "zone_id": 2403,
+        "x": 14.6,
+        "y": 9.4,
+    },
+    {
+        "level_min": 62,
+        "level_max": 70,
+        "npc_id": 1025878,
+        "npc_name_zh": "紅",
+        "npc_name_en": "Kurenai",
+        "location_zh": "碧玉水",  # Tamamizu
+        "zone_id": 2409,
+        "x": 28.5,
+        "y": 15.2,
+    },
+    {
+        "level_min": 70,
+        "level_max": 80,
+        "npc_id": 1029840,
+        "npc_name_zh": "凱·希爾",
+        "npc_name_en": "Kai-Shirr",
+        "location_zh": "遊末邦",
+        "zone_id": 2952,
+        "x": 12.3,
+        "y": 9.9,
+    },
+    {
+        "level_min": 80,
+        "level_max": 80,
+        "npc_id": 1032001,
+        "npc_name_zh": "艾爾·圖",
+        "npc_name_en": "Ehll Tou",
+        "location_zh": "天穹街",
+        "zone_id": 3435,
+        "x": 14.4,
+        "y": 12.6,
+    },
+    {
+        "level_min": 80,
+        "level_max": 90,
+        "npc_id": 1035211,
+        "npc_name_zh": "狄蘭達爾伯爵",
+        "npc_name_en": "Charlemend",
+        "location_zh": "天穹街",
+        "zone_id": 3435,
+        "x": 9.4,
+        "y": 8.7,
+    },
+    {
+        "level_min": 80,
+        "level_max": 90,
+        "npc_id": 1040284,
+        "npc_name_zh": "阿梅莉安絲",
+        "npc_name_en": "Ameliance",
+        "location_zh": "舊薩雷安",
+        "zone_id": 3706,
+        "x": 12.6,
+        "y": 9.7,
+    },
+    {
+        "level_min": 80,
+        "level_max": 90,
+        "npc_id": 1045407,
+        "npc_name_zh": "瑪格拉特",
+        "npc_name_en": "Margrat",
+        "location_zh": "迷津",  # Labyrinthos
+        "zone_id": 3709,
+        "x": 20.4,
+        "y": 20.1,
+    },
+    {
+        "level_min": 90,
+        "level_max": 100,
+        "npc_id": 1044547,
+        "npc_name_zh": "安登",
+        "npc_name_en": "Anden",
+        "location_zh": "伊爾美格",
+        "zone_id": 2956,
+        "x": 17.0,
+        "y": 34.0,
+    },
+    {
+        "level_min": 90,
+        "level_max": 100,
+        "npc_id": 1046985,
+        "npc_name_zh": "尼托維凱",
+        "npc_name_en": "Nitowikwe",
+        "location_zh": "夏勞尼荒野",
+        "zone_id": 4508,
+        "x": 14.3,
+        "y": 19.3,
+    },
+]
+
+# 收藏品交易員 (Collectable Appraiser) 位置
+# 可隨時交納收藏品換取工票
+# 資料來源：Teamcraft + FFXIV Wiki
+# 注意：順序很重要，特定等級的放前面，通用的放後面
+COLLECTABLE_APPRAISERS = [
+    # === Lv 50-60 ===
+    {
+        "level_min": 50,
+        "level_max": 60,
+        "npc_id": 1012300,
+        "npc_name_zh": "收藏品交易員",
+        "npc_name_en": "Collectable Appraiser",
+        "location_zh": "田園郡",
+        "zone_id": 2082,
+        "x": 5.8,
+        "y": 7.0,
+    },
+    {
+        "level_min": 50,
+        "level_max": 60,
+        "npc_id": 1013396,
+        "npc_name_zh": "收藏品交易員",
+        "npc_name_en": "Collectable Appraiser",
+        "location_zh": "摩杜納",
+        "zone_id": 67,
+        "x": 22.5,
+        "y": 6.7,
+    },
+    # === Lv 61-70 ===
+    {
+        "level_min": 61,
+        "level_max": 70,
+        "npc_id": 1019457,
+        "npc_name_zh": "收藏品交易員",
+        "npc_name_en": "Collectable Appraiser",
+        "location_zh": "神拳痕",
+        "zone_id": 2403,
+        "x": 9.9,
+        "y": 12.6,
+    },
+    {
+        "level_min": 61,
+        "level_max": 70,
+        "npc_id": 1025971,
+        "npc_name_zh": "薩娜娜",
+        "npc_name_en": "Sanana",
+        "location_zh": "黃金港",
+        "zone_id": 2404,
+        "x": 12.0,
+        "y": 8.4,
+    },
+    # === Lv 71-80 ===
+    {
+        "level_min": 71,
+        "level_max": 80,
+        "npc_id": 1027542,
+        "npc_name_zh": "收藏品交易員",
+        "npc_name_en": "Collectable Appraiser",
+        "location_zh": "遊末邦",
+        "zone_id": 2952,
+        "x": 11.7,
+        "y": 10.8,
+    },
+    {
+        "level_min": 71,
+        "level_max": 80,
+        "npc_id": 1031501,
+        "npc_name_zh": "工票交易員",
+        "npc_name_en": "Scrip Exchange",
+        "location_zh": "水晶都",
+        "zone_id": 2951,
+        "x": 9.8,
+        "y": 8.5,
+    },
+    # === Lv 81-90 ===
+    {
+        "level_min": 81,
+        "level_max": 90,
+        "npc_id": 1037262,
+        "npc_name_zh": "工票交易員",
+        "npc_name_en": "Scrip Exchange",
+        "location_zh": "舊薩雷安",
+        "zone_id": 3706,
+        "x": 5.0,
+        "y": 9.4,
+    },
+    {
+        "level_min": 81,
+        "level_max": 90,
+        "npc_id": 1037306,
+        "npc_name_zh": "收藏品交易員",
+        "npc_name_en": "Collectable Appraiser",
+        "location_zh": "拉札罕",
+        "zone_id": 3707,
+        "x": 11.7,
+        "y": 9.9,
+    },
+    # === Lv 91-100 ===
+    {
+        "level_min": 91,
+        "level_max": 100,
+        "npc_id": 1048386,
+        "npc_name_zh": "工票交易員",
+        "npc_name_en": "Scrip Exchange",
+        "location_zh": "圖萊尤拉",
+        "zone_id": 4504,
+        "x": 16.3,
+        "y": 11.2,
+    },
+    {
+        "level_min": 91,
+        "level_max": 100,
+        "npc_id": 1049084,
+        "npc_name_zh": "收藏品交易員",
+        "npc_name_en": "Collectable Appraiser",
+        "location_zh": "九號解決方案",
+        "zone_id": 4503,
+        "x": 9.1,
+        "y": 13.5,
+    },
+    # === 三大主城（全等級通用，放最後作為備用）===
+    {
+        "level_min": 1,
+        "level_max": 100,
+        "npc_id": 1003632,
+        "npc_name_zh": "收藏品交易員",
+        "npc_name_en": "Collectable Appraiser",
+        "location_zh": "利姆薩·羅敏薩下層甲板",
+        "zone_id": 29,
+        "x": 6.1,
+        "y": 12.0,
+    },
+    {
+        "level_min": 1,
+        "level_max": 100,
+        "npc_id": 1001616,
+        "npc_name_zh": "收藏品交易員",
+        "npc_name_en": "Collectable Appraiser",
+        "location_zh": "烏爾達哈來生回廊",
+        "zone_id": 41,
+        "x": 14.3,
+        "y": 10.9,
+    },
+    {
+        "level_min": 1,
+        "level_max": 100,
+        "npc_id": 1003076,
+        "npc_name_zh": "收藏品交易員",
+        "npc_name_en": "Collectable Appraiser",
+        "location_zh": "格里達尼亞舊街",
+        "zone_id": 53,
+        "x": 14.2,
+        "y": 9.1,
+    },
+]
 
 
 def get_eorzea_time() -> tuple[int, int]:
@@ -561,12 +846,13 @@ def get_current_collectables(job_filter: str = None) -> tuple[list, list]:
     return available, upcoming
 
 
-def format_collectables_table(collectables: list, is_available: bool) -> list:
+def format_collectables_table(collectables: list, is_available: bool, show_appraiser: bool = True) -> list:
     """格式化收藏品資料為表格.
 
     Args:
         collectables: 收藏品列表
         is_available: 是否是目前可採集
+        show_appraiser: 是否顯示老主顧欄位
 
     Returns:
         表格資料列表
@@ -599,7 +885,11 @@ def format_collectables_table(collectables: list, is_available: bool) -> list:
         spawn_times = coll.get("spawn_times", [])
         spawn_str = ", ".join(f"{h:02d}:00" for h in spawn_times)
 
-        rows.append([
+        # 老主顧資訊
+        level = coll.get("level", 0)
+        appraiser_str = format_appraiser_info(level) if show_appraiser else ""
+
+        row = [
             coll.get("item_name", ""),
             coll.get("job", ""),
             coll.get("level", 0),
@@ -608,7 +898,12 @@ def format_collectables_table(collectables: list, is_available: bool) -> list:
             spawn_str,
             time_str,
             scrip_str,
-        ])
+        ]
+
+        if show_appraiser:
+            row.append(appraiser_str)
+
+        rows.append(row)
 
     return rows
 
@@ -639,3 +934,125 @@ def refresh_collectables_data():
     load_items_zh()
     load_places_zh()
     load_gathering_items()
+
+
+def get_custom_delivery_for_level(level: int) -> list[dict]:
+    """取得對應等級的老主顧 NPC 資訊.
+
+    Args:
+        level: 收藏品等級
+
+    Returns:
+        老主顧資訊列表（可能有多個）
+    """
+    npcs = []
+    for npc in CUSTOM_DELIVERY_NPCS:
+        if npc["level_min"] <= level <= npc["level_max"]:
+            npcs.append(npc)
+    return npcs
+
+
+def format_appraiser_info(level: int) -> str:
+    """格式化老主顧資訊為字串.
+
+    Args:
+        level: 收藏品等級
+
+    Returns:
+        格式化的老主顧資訊
+    """
+    # 使用老主顧 (Custom Delivery) NPC
+    npcs = get_custom_delivery_for_level(level)
+    if not npcs:
+        return "-"
+
+    # 使用繁體中文名稱
+    npc = npcs[0]  # 只顯示第一個
+    name = _s2t_converter.convert(npc["npc_name_zh"])
+    location = _s2t_converter.convert(npc["location_zh"])
+
+    return f"{name} @ {location}"
+
+
+def get_appraiser_for_level(level: int) -> list[dict]:
+    """取得對應等級的收藏品交易員資訊.
+
+    Args:
+        level: 收藏品等級
+
+    Returns:
+        收藏品交易員資訊列表
+    """
+    appraisers = []
+    for appraiser in COLLECTABLE_APPRAISERS:
+        if appraiser["level_min"] <= level <= appraiser["level_max"]:
+            appraisers.append(appraiser)
+    return appraisers
+
+
+def get_all_appraisers() -> list[dict]:
+    """取得所有老主顧 NPC 的資訊.
+
+    Returns:
+        所有老主顧的資訊列表
+    """
+    result = []
+    for appraiser in COLLECTABLE_APPRAISERS:
+        result.append({
+            "level_range": f"Lv {appraiser['level_min']}-{appraiser['level_max']}",
+            "npc_name": _s2t_converter.convert(appraiser["npc_name_zh"]),
+            "location": _s2t_converter.convert(appraiser["location_zh"]),
+            "coords": f"({appraiser['x']:.1f}, {appraiser['y']:.1f})",
+        })
+    return result
+
+
+def format_appraisers_table() -> list:
+    """格式化收藏品交易員資訊為表格.
+
+    Returns:
+        表格資料列表
+    """
+    rows = []
+    for appraiser in get_all_appraisers():
+        rows.append([
+            appraiser["level_range"],
+            appraiser["npc_name"],
+            appraiser["location"],
+            appraiser["coords"],
+        ])
+    return rows
+
+
+def get_all_custom_delivery_npcs() -> list[dict]:
+    """取得所有老主顧 NPC 的資訊.
+
+    Returns:
+        所有老主顧的資訊列表
+    """
+    result = []
+    for npc in CUSTOM_DELIVERY_NPCS:
+        result.append({
+            "level_range": f"Lv {npc['level_min']}-{npc['level_max']}",
+            "npc_name": _s2t_converter.convert(npc["npc_name_zh"]),
+            "location": _s2t_converter.convert(npc["location_zh"]),
+            "coords": f"({npc['x']:.1f}, {npc['y']:.1f})",
+        })
+    return result
+
+
+def format_custom_delivery_table() -> list:
+    """格式化老主顧 NPC 資訊為表格.
+
+    Returns:
+        表格資料列表
+    """
+    rows = []
+    for npc in get_all_custom_delivery_npcs():
+        rows.append([
+            npc["level_range"],
+            npc["npc_name"],
+            npc["location"],
+            npc["coords"],
+        ])
+    return rows
