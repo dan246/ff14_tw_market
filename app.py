@@ -509,7 +509,7 @@ def _build_collectables_tab() -> None:
         available_table = gr.Dataframe(
             headers=[
                 "物品名稱", "職業", "等級", "地點", "座標",
-                "出現時間", "剩餘時間", "工票", "老主顧",
+                "出現時間", "剩餘時間", "工票", "交易員",
             ],
             interactive=False,
         )
@@ -518,7 +518,7 @@ def _build_collectables_tab() -> None:
         upcoming_table = gr.Dataframe(
             headers=[
                 "物品名稱", "職業", "等級", "地點", "座標",
-                "出現時間", "等待時間", "工票", "老主顧",
+                "出現時間", "等待時間", "工票", "交易員",
             ],
             interactive=False,
         )

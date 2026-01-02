@@ -953,23 +953,23 @@ def get_custom_delivery_for_level(level: int) -> list[dict]:
 
 
 def format_appraiser_info(level: int) -> str:
-    """格式化老主顧資訊為字串.
+    """格式化收藏品交易員資訊為字串.
 
     Args:
         level: 收藏品等級
 
     Returns:
-        格式化的老主顧資訊
+        格式化的收藏品交易員資訊
     """
-    # 使用老主顧 (Custom Delivery) NPC
-    npcs = get_custom_delivery_for_level(level)
-    if not npcs:
+    # 使用收藏品交易員 (Collectable Appraiser) NPC
+    appraisers = get_appraiser_for_level(level)
+    if not appraisers:
         return "-"
 
-    # 使用繁體中文名稱
-    npc = npcs[0]  # 只顯示第一個
-    name = _s2t_converter.convert(npc["npc_name_zh"])
-    location = _s2t_converter.convert(npc["location_zh"])
+    # 使用繁體中文名稱，取第一個符合等級的
+    appraiser = appraisers[0]
+    name = _s2t_converter.convert(appraiser["npc_name_zh"])
+    location = _s2t_converter.convert(appraiser["location_zh"])
 
     return f"{name} @ {location}"
 
