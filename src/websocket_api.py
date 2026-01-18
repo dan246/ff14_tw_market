@@ -21,6 +21,9 @@ CHOCOBO_WORLD_IDS = list(WORLDS.keys())
 class UniversalisWebSocket:
     """Universalis WebSocket 客戶端."""
 
+    # 最大保留的即時事件數量
+    MAX_LIVE_EVENTS = 100
+
     def __init__(self):
         self._ws: Optional[websockets.WebSocketClientProtocol] = None
         self._loop: Optional[asyncio.AbstractEventLoop] = None
@@ -34,6 +37,12 @@ class UniversalisWebSocket:
         self._item_cache: dict[int, dict] = {}
         # 當前訂閱的物品 ID
         self._watched_items: set[int] = set()
+        # 即時交易事件列表 (最新的在前面)
+        self._live_events: list[dict] = []
+        self._live_events_lock = threading.Lock()
+        # 各伺服器最後收到數據的時間: {world_id: timestamp}
+        self._world_last_update: dict[int, float] = {}
+        self._world_event_count: dict[int, int] = {}  # 事件計數
 
     def start(self):
         """啟動 WebSocket 連線（在背景執行緒中運行）."""
@@ -137,6 +146,28 @@ class UniversalisWebSocket:
                     "event": event,
                     "world": world_id,
                 }
+
+            # 儲存即時事件 (listings/add, sales/add, sales/remove)
+            if event in ("listings/add", "sales/add", "listings/remove"):
+                current_time = time.time()
+                live_event = {
+                    "event": event,
+                    "item_id": item_id,
+                    "world_id": world_id,
+                    "world_name": WORLDS.get(world_id, "未知"),
+                    "timestamp": current_time,
+                    "data": data,
+                }
+                with self._live_events_lock:
+                    self._live_events.insert(0, live_event)
+                    # 限制列表大小
+                    if len(self._live_events) > self.MAX_LIVE_EVENTS:
+                        self._live_events = self._live_events[:self.MAX_LIVE_EVENTS]
+
+                # 更新伺服器最後更新時間
+                if world_id:
+                    self._world_last_update[world_id] = current_time
+                    self._world_event_count[world_id] = self._world_event_count.get(world_id, 0) + 1
 
             # 放入消息佇列
             self._message_queue.put(data)
@@ -285,6 +316,63 @@ class UniversalisWebSocket:
             self._item_cache.pop(item_id, None)
         else:
             self._item_cache.clear()
+
+    def get_live_events(self, limit: int = 50) -> list[dict]:
+        """取得即時交易事件.
+
+        Args:
+            limit: 最大數量
+
+        Returns:
+            即時事件列表（最新的在前面）
+        """
+        with self._live_events_lock:
+            return self._live_events[:limit].copy()
+
+    def get_live_events_count(self) -> int:
+        """取得即時事件數量."""
+        with self._live_events_lock:
+            return len(self._live_events)
+
+    def clear_live_events(self):
+        """清除即時事件."""
+        with self._live_events_lock:
+            self._live_events.clear()
+
+    def get_world_data_status(self) -> list[dict]:
+        """取得各伺服器的資料流狀態.
+
+        Returns:
+            各伺服器狀態列表，包含 world_id, world_name, last_update, event_count
+        """
+        current_time = time.time()
+        status_list = []
+
+        for world_id, world_name in WORLDS.items():
+            last_update = self._world_last_update.get(world_id, 0)
+            event_count = self._world_event_count.get(world_id, 0)
+
+            if last_update > 0:
+                elapsed = current_time - last_update
+            else:
+                elapsed = -1  # 表示從未收到數據
+
+            status_list.append({
+                "world_id": world_id,
+                "world_name": world_name,
+                "last_update": last_update,
+                "elapsed_seconds": elapsed,
+                "event_count": event_count,
+            })
+
+        return status_list
+
+    def reset_stats(self):
+        """重置統計數據."""
+        self._world_last_update.clear()
+        self._world_event_count.clear()
+        with self._live_events_lock:
+            self._live_events.clear()
 
 
 # 全域 WebSocket 客戶端實例

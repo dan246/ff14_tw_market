@@ -7,6 +7,62 @@ GRADIO_VERSION = int(gr.__version__.split(".")[0])
 USE_BROWSER_STATE = GRADIO_VERSION >= 5
 
 from src.config import POPULAR_ITEMS, WORLD_NAMES
+
+# 自訂 CSS 樣式 - 僅頁首裝飾
+CUSTOM_CSS = """
+/* 頁首樣式 */
+.header-box {
+    background: linear-gradient(135deg, #b8860b 0%, #daa520 50%, #b8860b 100%);
+    border-radius: 12px;
+    padding: 20px 24px;
+    margin-bottom: 16px;
+}
+
+.header-box h1 {
+    color: #1a1a2e !important;
+    margin: 0 0 8px 0 !important;
+}
+
+.header-box p {
+    color: #2c2c2c !important;
+    margin: 4px 0 !important;
+}
+
+.header-box a {
+    color: #1a1a2e !important;
+    font-weight: 700;
+    text-decoration: underline;
+}
+
+/* 伺服器標籤 */
+.server-tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-top: 10px;
+}
+
+.server-tag {
+    background: rgba(0,0,0,0.2);
+    color: #1a1a2e;
+    padding: 4px 10px;
+    border-radius: 12px;
+    font-size: 0.8em;
+    font-weight: 600;
+}
+
+/* 狀態標籤 */
+.status-badge {
+    display: inline-block;
+    background: #27ae60;
+    color: #ffffff;
+    padding: 6px 12px;
+    border-radius: 20px;
+    font-size: 0.85em;
+    margin-top: 12px;
+    font-weight: 500;
+}
+"""
 from src.display import (
     display_item_market,
     display_market_activity,
@@ -44,7 +100,9 @@ from src.collectables import (
     refresh_collectables_data,
     GATHERING_JOBS,
 )
-from src.websocket_api import start_websocket
+from src.websocket_api import start_websocket, get_ws_client
+from src.api import get_item_info
+from src.charts import create_data_flow_chart
 
 
 def refresh_watchlist_with_notify(watchlist: list):
@@ -66,6 +124,7 @@ def create_app() -> gr.Blocks:
     with gr.Blocks(
         title="FF14 繁中服市場板",
         theme=gr.themes.Soft(primary_hue="amber", neutral_hue="slate"),
+        css=CUSTOM_CSS,
     ) as app:
         # 使用 BrowserState（Gradio 5+）或 State（Gradio 4）儲存監看清單
         if USE_BROWSER_STATE:
@@ -76,20 +135,28 @@ def create_app() -> gr.Blocks:
         else:
             watchlist_state = gr.State(value=[])
 
-        gr.Markdown("""
-        # FF14 繁中服市場板查詢工具
-
-        使用 [Universalis API](https://universalis.app/) 查詢繁體中文伺服器（陸行鳥資料中心）的市場數據
-
-        **支援伺服器:** 伊弗利特、迦樓羅、利維坦、鳳凰、奧汀、巴哈姆特、拉姆、泰坦
-
-        > **搜尋提示:** 可輸入繁體中文、英文名稱、物品 ID，或貼上 Universalis 網址
-
-        🔗 **WebSocket 已連線** - 使用異步 API 加速查詢
+        # 美化的頁首
+        gr.HTML("""
+        <div class="header-box">
+            <h1>🎮 FF14 繁中服市場板</h1>
+            <p>使用 <a href="https://universalis.app/" target="_blank">Universalis API</a> 查詢繁體中文伺服器（陸行鳥資料中心）的市場數據</p>
+            <div class="server-tags">
+                <span class="server-tag">伊弗利特</span>
+                <span class="server-tag">迦樓羅</span>
+                <span class="server-tag">利維坦</span>
+                <span class="server-tag">鳳凰</span>
+                <span class="server-tag">奧汀</span>
+                <span class="server-tag">巴哈姆特</span>
+                <span class="server-tag">拉姆</span>
+                <span class="server-tag">泰坦</span>
+            </div>
+            <div class="status-badge">✓ WebSocket 已連線</div>
+        </div>
         """)
 
         with gr.Tabs():
             _build_market_tab()
+            _build_live_tracking_tab()
             _build_crafting_tab()
             _build_shopping_tab()
             _build_collectables_tab()
@@ -107,8 +174,8 @@ def _build_market_tab() -> None:
     """建立市場查詢頁籤."""
     with gr.TabItem("市場查詢"):
         gr.Markdown("""
-        查詢物品的市場價格、上架情況和交易紀錄。
-        支援繁體中文搜尋，也可以直接貼上 Universalis 網址。
+        ### 📊 市場價格查詢
+        查詢物品的市場價格、上架情況和交易紀錄。支援繁體中文搜尋，也可以直接貼上 Universalis 網址。
         """)
         with gr.Row():
             with gr.Column(scale=2):
@@ -156,7 +223,7 @@ def _build_market_tab() -> None:
 
         with gr.Row():
             with gr.Column():
-                gr.Markdown("### 當前上架")
+                gr.Markdown("### 📋 當前上架")
                 listings_table = gr.Dataframe(
                     headers=[
                         "品質", "單價", "數量", "總價",
@@ -166,7 +233,7 @@ def _build_market_tab() -> None:
                 )
 
             with gr.Column():
-                gr.Markdown("### 交易歷史")
+                gr.Markdown("### 📜 交易歷史")
                 history_table = gr.Dataframe(
                     headers=[
                         "品質", "單價", "數量", "總價",
@@ -175,10 +242,10 @@ def _build_market_tab() -> None:
                     interactive=False,
                 )
 
-        gr.Markdown("### 價格走勢")
+        gr.Markdown("### 📈 價格走勢")
         price_chart = gr.Plot()
 
-        gr.Markdown("### 跨伺服器比價")
+        gr.Markdown("### 🌐 跨伺服器比價")
         with gr.Row():
             comparison_table = gr.Dataframe(interactive=False)
             comparison_chart = gr.Plot()
@@ -213,7 +280,7 @@ def _build_market_tab() -> None:
 
         # 自動刷新開關
         auto_refresh.change(
-            fn=lambda x: gr.Timer(active=x),
+            fn=lambda x: gr.update(active=x),
             inputs=[auto_refresh],
             outputs=[timer],
         )
@@ -229,12 +296,191 @@ def _build_market_tab() -> None:
         )
 
 
+def _get_live_events_table():
+    """取得即時交易事件表格數據."""
+    import time as time_module
+    ws_client = get_ws_client()
+    events = ws_client.get_live_events(limit=30)
+
+    if not events:
+        return [], "等待即時交易數據..."
+
+    # 物品名稱緩存
+    item_names = {}
+
+    table_data = []
+    for event in events:
+        item_id = event.get("item_id")
+        world_name = event.get("world_name", "未知")
+        event_type = event.get("event", "")
+        timestamp = event.get("timestamp", 0)
+        data = event.get("data", {})
+
+        # 取得物品名稱（使用緩存）
+        if item_id not in item_names:
+            try:
+                item_info = get_item_info(item_id)
+                item_names[item_id] = item_info.get("Name", f"物品 {item_id}")
+            except Exception:
+                item_names[item_id] = f"物品 {item_id}"
+        item_name = item_names[item_id]
+
+        # 計算相對時間
+        elapsed = time_module.time() - timestamp
+        if elapsed < 60:
+            time_str = f"{int(elapsed)} 秒前"
+        elif elapsed < 3600:
+            time_str = f"{int(elapsed // 60)} 分鐘前"
+        else:
+            time_str = f"{int(elapsed // 3600)} 小時前"
+
+        # 解析事件類型和詳細資訊
+        if event_type == "listings/add":
+            event_icon = "📤"
+            event_text = "上架"
+            # 嘗試取得價格和數量
+            listings = data.get("listings", [])
+            if listings:
+                listing = listings[0]
+                price = listing.get("pricePerUnit", 0)
+                qty = listing.get("quantity", 1)
+                hq = "HQ" if listing.get("hq") else "NQ"
+                detail = f"{hq} x{qty} @ {price:,}"
+            else:
+                detail = "-"
+        elif event_type == "sales/add":
+            event_icon = "💰"
+            event_text = "售出"
+            sales = data.get("sales", [])
+            if sales:
+                sale = sales[0]
+                price = sale.get("pricePerUnit", 0)
+                qty = sale.get("quantity", 1)
+                hq = "HQ" if sale.get("hq") else "NQ"
+                detail = f"{hq} x{qty} @ {price:,}"
+            else:
+                detail = "-"
+        elif event_type == "listings/remove":
+            event_icon = "📥"
+            event_text = "下架"
+            detail = "-"
+        else:
+            event_icon = "❓"
+            event_text = event_type
+            detail = "-"
+
+        table_data.append([
+            f"{event_icon} {event_text}",
+            time_str,
+            world_name,
+            item_name,
+            detail,
+        ])
+
+    status = f"已接收 {ws_client.get_live_events_count()} 筆即時數據"
+    if ws_client.is_connected():
+        status = f"🟢 已連線 | {status}"
+    else:
+        status = f"🔴 連線中斷 | {status}"
+
+    return table_data, status
+
+
+def _build_live_tracking_tab() -> None:
+    """建立即時追蹤頁籤."""
+    with gr.TabItem("即時追蹤"):
+        gr.Markdown("""
+        ### 📡 即時交易追蹤
+        顯示繁中服正在發生的市場交易（上架、售出），數據由 Universalis WebSocket 推送。
+        """)
+
+        with gr.Row():
+            refresh_live_btn = gr.Button("重新整理", variant="primary")
+            clear_live_btn = gr.Button("清除紀錄", variant="secondary")
+            reset_stats_btn = gr.Button("重置統計", variant="secondary")
+            auto_refresh_live = gr.Checkbox(
+                label="自動刷新 (3秒)",
+                value=True,
+            )
+
+        with gr.Row():
+            with gr.Column(scale=3):
+                live_status = gr.Markdown("等待連線...")
+                live_table = gr.Dataframe(
+                    headers=["事件", "時間", "伺服器", "物品", "詳細"],
+                    interactive=False,
+                    wrap=True,
+                )
+            with gr.Column(scale=2):
+                gr.Markdown("#### 資料流狀態")
+                data_flow_chart = gr.Plot(label="各伺服器資料更新狀態")
+
+        gr.Markdown("""
+        > **說明**: 即時數據來自其他玩家上傳，需要有人在該伺服器開啟市場板才會有更新。
+        > 資料流圖表顯示各伺服器最後收到資料的時間，資料延遲是由 Universalis 資料來源決定，並非本工具造成。
+        """)
+
+        # 自動刷新計時器 (3秒)
+        live_timer = gr.Timer(value=3, active=True)
+
+        def get_live_events_with_chart():
+            """取得即時事件和資料流圖表."""
+            table_data, status = _get_live_events_table()
+            ws_client = get_ws_client()
+            world_status = ws_client.get_world_data_status()
+            chart = create_data_flow_chart(world_status)
+            return table_data, status, chart
+
+        # 事件綁定
+        refresh_live_btn.click(
+            fn=get_live_events_with_chart,
+            outputs=[live_table, live_status, data_flow_chart],
+        )
+
+        def clear_and_refresh():
+            ws_client = get_ws_client()
+            ws_client.clear_live_events()
+            world_status = ws_client.get_world_data_status()
+            chart = create_data_flow_chart(world_status)
+            return [], "紀錄已清除", chart
+
+        clear_live_btn.click(
+            fn=clear_and_refresh,
+            outputs=[live_table, live_status, data_flow_chart],
+        )
+
+        def reset_stats_and_refresh():
+            ws_client = get_ws_client()
+            ws_client.reset_stats()
+            world_status = ws_client.get_world_data_status()
+            chart = create_data_flow_chart(world_status)
+            return [], "統計已重置", chart
+
+        reset_stats_btn.click(
+            fn=reset_stats_and_refresh,
+            outputs=[live_table, live_status, data_flow_chart],
+        )
+
+        # 自動刷新開關
+        auto_refresh_live.change(
+            fn=lambda x: gr.update(active=x),
+            inputs=[auto_refresh_live],
+            outputs=[live_timer],
+        )
+
+        # 計時器觸發刷新
+        live_timer.tick(
+            fn=get_live_events_with_chart,
+            outputs=[live_table, live_status, data_flow_chart],
+        )
+
+
 def _build_crafting_tab() -> None:
     """建立製作利潤頁籤."""
     with gr.TabItem("製作利潤"):
         gr.Markdown("""
-        計算製作物品的成本與利潤，找出最賺錢的製作物品。
-        支援遞迴計算材料成本（比較買材料 vs 自己做哪個便宜）。
+        ### 💰 製作利潤計算
+        計算製作物品的成本與利潤，找出最賺錢的製作物品。支援遞迴計算材料成本。
         """)
 
         with gr.Tabs():
@@ -393,6 +639,7 @@ def _build_shopping_tab() -> None:
     """建立購物清單與雇員銷售頁籤."""
     with gr.TabItem("購物助手"):
         gr.Markdown("""
+        ### 🛒 購物助手
         購物清單計算最佳購買伺服器，雇員建議找出最值得賣的物品。
         """)
 
@@ -487,8 +734,8 @@ def _build_collectables_tab() -> None:
     """建立收藏品時間表頁籤."""
     with gr.TabItem("收藏品時間表"):
         gr.Markdown("""
-        大地使者（採礦工、園藝工、捕魚人）收藏品採集時間表。
-        顯示目前可採集和即將出現的收藏品，包含 ET 時間、地點、工票獎勵、老主顧 NPC 資訊。
+        ### ⏰ 收藏品時間表
+        大地使者（採礦工、園藝工、捕魚人）收藏品採集時間表。顯示目前可採集和即將出現的收藏品。
         """)
 
         with gr.Row():
@@ -506,7 +753,7 @@ def _build_collectables_tab() -> None:
                 value=True,
             )
 
-        gr.Markdown("### 目前可採集")
+        gr.Markdown("### ✅ 目前可採集")
         available_table = gr.Dataframe(
             headers=[
                 "物品名稱", "職業", "等級", "地點", "座標",
@@ -515,7 +762,7 @@ def _build_collectables_tab() -> None:
             interactive=False,
         )
 
-        gr.Markdown("### 即將出現")
+        gr.Markdown("### ⏳ 即將出現")
         upcoming_table = gr.Dataframe(
             headers=[
                 "物品名稱", "職業", "等級", "地點", "座標",
@@ -604,7 +851,7 @@ def _build_collectables_tab() -> None:
 
         # 自動刷新開關
         auto_refresh_coll.change(
-            fn=lambda x: gr.Timer(active=x),
+            fn=lambda x: gr.update(active=x),
             inputs=[auto_refresh_coll],
             outputs=[coll_timer],
         )
@@ -627,6 +874,7 @@ def _build_activity_tab() -> None:
     """建立市場動態頁籤."""
     with gr.TabItem("市場動態"):
         gr.Markdown("""
+        ### 📡 市場動態
         最近有人上架或更新價格的物品，方便你看看現在市場在賣什麼。
         """)
 
@@ -668,7 +916,7 @@ def _build_activity_tab() -> None:
 
         # 自動刷新開關
         auto_refresh_activity.change(
-            fn=lambda x: gr.Timer(active=x),
+            fn=lambda x: gr.update(active=x),
             inputs=[auto_refresh_activity],
             outputs=[activity_timer],
         )
@@ -686,13 +934,13 @@ def _build_watchlist_tab(watchlist_state) -> None:
     with gr.TabItem("監看清單"):
         if USE_BROWSER_STATE:
             gr.Markdown("""
-            把想追蹤的物品加到清單，設定目標價格，低於目標時會提示你。
-            資料儲存在你的瀏覽器，不同裝置或瀏覽器的清單是獨立的。
+            ### 👁️ 監看清單
+            把想追蹤的物品加到清單，設定目標價格，低於目標時會提示你。資料儲存在瀏覽器。
             """)
         else:
             gr.Markdown("""
-            把想追蹤的物品加到清單，設定目標價格，低於目標時會提示你。
-            注意：關閉網頁後清單會清空。
+            ### 👁️ 監看清單
+            把想追蹤的物品加到清單，設定目標價格，低於目標時會提示你。注意：關閉網頁後清單會清空。
             """)
 
         with gr.Row():
@@ -762,7 +1010,7 @@ def _build_watchlist_tab(watchlist_state) -> None:
 
         # 自動刷新開關
         auto_refresh_list.change(
-            fn=lambda x: gr.Timer(active=x),
+            fn=lambda x: gr.update(active=x),
             inputs=[auto_refresh_list],
             outputs=[watchlist_timer],
         )
@@ -779,6 +1027,7 @@ def _build_tax_tab() -> None:
     """建立稅率資訊頁籤."""
     with gr.TabItem("稅率資訊"):
         gr.Markdown("""
+        ### 🏛️ 稅率資訊
         各城市的市場稅率，賣東西前可以先看看哪邊稅比較低。
         """)
         tax_world_select = gr.Dropdown(
@@ -807,6 +1056,7 @@ def _build_stats_tab() -> None:
     """建立統計資訊頁籤."""
     with gr.TabItem("上傳統計"):
         gr.Markdown("""
+        ### 📊 上傳統計
         各伺服器玩家上傳市場資料的次數。上傳越多，這裡的價格資訊就越準。
         """)
         refresh_stats_btn = gr.Button("重新整理", variant="primary")
@@ -825,8 +1075,8 @@ def _build_ai_tab() -> None:
     """建立 AI 分析頁籤."""
     with gr.TabItem("AI 分析"):
         gr.Markdown("""
-        分析物品價格趨勢、跨服套利機會。
-        輸入你的 HuggingFace Token 可啟用 AI 買賣建議。
+        ### 🤖 AI 智慧分析
+        分析物品價格趨勢、跨服套利機會。輸入你的 HuggingFace Token 可啟用 AI 買賣建議。
         """)
 
         with gr.Row():
@@ -895,6 +1145,26 @@ def _build_changelog_tab() -> None:
     """建立更新紀錄頁籤."""
     with gr.TabItem("更新紀錄"):
         gr.Markdown("""
+### 📝 更新紀錄
+
+### v1.7.2 (2025-01)
+- 即時追蹤新增「資料流狀態」圖表
+- 顯示各伺服器最後收到資料的時間
+- 以顏色標示資料新鮮度（綠/黃/橙/紅）
+- 讓使用者了解資料延遲來源
+
+### v1.7.1 (2025-01)
+- 新增「即時追蹤」功能
+- 顯示繁中服正在發生的市場交易（上架、售出）
+- 數據由 Universalis WebSocket 即時推送
+- 支援自動刷新（3秒）
+
+### v1.7.0 (2025-01)
+- 介面美化：採用 Gradio Soft 主題
+- 新增金色漸層頁首設計
+- 伺服器標籤視覺化呈現
+- 圖表配色優化（NQ 藍灰色、HQ 琥珀金色）
+
 ### v1.6.1 (2025-01)
 - 收藏品時間表新增「老主顧」NPC 資訊
 - 顯示對應等級範圍的老主顧名稱與位置座標
