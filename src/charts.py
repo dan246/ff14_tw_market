@@ -71,6 +71,27 @@ def _normalize_timestamp(timestamp: int) -> int:
     return timestamp
 
 
+def _detect_outliers(prices: list) -> tuple:
+    """使用 IQR 方法檢測異常值.
+
+    Returns:
+        (lower_bound, upper_bound) 正常價格範圍
+    """
+    if len(prices) < 4:
+        return (0, float('inf'))
+
+    sorted_prices = sorted(prices)
+    n = len(sorted_prices)
+    q1 = sorted_prices[n // 4]
+    q3 = sorted_prices[3 * n // 4]
+    iqr = q3 - q1
+
+    lower_bound = q1 - 1.5 * iqr
+    upper_bound = q3 + 1.5 * iqr
+
+    return (max(0, lower_bound), upper_bound)
+
+
 def create_price_chart(market_data: dict, item_name: str) -> go.Figure:
     """建立價格歷史圖表.
 
@@ -114,7 +135,14 @@ def create_price_chart(market_data: dict, item_name: str) -> go.Figure:
         if not e.get("hq")
     ]
 
+    # 檢測異常值
+    all_prices = [e["pricePerUnit"] for e in entries]
+    lower_bound, upper_bound = _detect_outliers(all_prices)
+
     fig = go.Figure()
+
+    # 收集異常值用於標註
+    outliers = []
 
     if nq_data:
         nq_times, nq_prices = zip(*sorted(nq_data))
@@ -134,6 +162,10 @@ def create_price_chart(market_data: dict, item_name: str) -> go.Figure:
             },
             hovertemplate="<b>NQ</b><br>價格: %{y:,.0f} Gil<br>時間: %{x}<extra></extra>",
         ))
+        # 找出 NQ 異常值
+        for t, p in zip(nq_times, nq_prices):
+            if p < lower_bound or p > upper_bound:
+                outliers.append((t, p, "NQ"))
 
     if hq_data:
         hq_times, hq_prices = zip(*sorted(hq_data))
@@ -154,6 +186,35 @@ def create_price_chart(market_data: dict, item_name: str) -> go.Figure:
             },
             hovertemplate="<b>HQ ★</b><br>價格: %{y:,.0f} Gil<br>時間: %{x}<extra></extra>",
         ))
+        # 找出 HQ 異常值
+        for t, p in zip(hq_times, hq_prices):
+            if p < lower_bound or p > upper_bound:
+                outliers.append((t, p, "HQ"))
+
+    # 標註異常值
+    for t, p, quality in outliers:
+        if p < lower_bound:
+            label = "異常低價"
+            color = "#ff6b6b"
+        else:
+            label = "異常高價"
+            color = "#ffd93d"
+
+        fig.add_annotation(
+            x=t,
+            y=p,
+            text=f"⚠️ {label}",
+            showarrow=True,
+            arrowhead=2,
+            arrowsize=1,
+            arrowwidth=2,
+            arrowcolor=color,
+            font={"color": color, "size": 10},
+            bgcolor="rgba(0,0,0,0.7)",
+            bordercolor=color,
+            borderwidth=1,
+            borderpad=3,
+        )
 
     fig.update_layout(
         **CHART_LAYOUT,

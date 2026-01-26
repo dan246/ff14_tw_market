@@ -6,63 +6,9 @@ import gradio as gr
 GRADIO_VERSION = int(gr.__version__.split(".")[0])
 USE_BROWSER_STATE = GRADIO_VERSION >= 5
 
-from src.config import POPULAR_ITEMS, WORLD_NAMES
-
-# 自訂 CSS 樣式 - 僅頁首裝飾
-CUSTOM_CSS = """
-/* 頁首樣式 */
-.header-box {
-    background: linear-gradient(135deg, #b8860b 0%, #daa520 50%, #b8860b 100%);
-    border-radius: 12px;
-    padding: 20px 24px;
-    margin-bottom: 16px;
-}
-
-.header-box h1 {
-    color: #1a1a2e !important;
-    margin: 0 0 8px 0 !important;
-}
-
-.header-box p {
-    color: #2c2c2c !important;
-    margin: 4px 0 !important;
-}
-
-.header-box a {
-    color: #1a1a2e !important;
-    font-weight: 700;
-    text-decoration: underline;
-}
-
-/* 伺服器標籤 */
-.server-tags {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 6px;
-    margin-top: 10px;
-}
-
-.server-tag {
-    background: rgba(0,0,0,0.2);
-    color: #1a1a2e;
-    padding: 4px 10px;
-    border-radius: 12px;
-    font-size: 0.8em;
-    font-weight: 600;
-}
-
-/* 狀態標籤 */
-.status-badge {
-    display: inline-block;
-    background: #27ae60;
-    color: #ffffff;
-    padding: 6px 12px;
-    border-radius: 20px;
-    font-size: 0.85em;
-    margin-top: 12px;
-    font-weight: 500;
-}
-"""
+from src.config import POPULAR_ITEMS, WORLD_NAMES, ITEM_SUB_CATEGORIES
+from src.styles import CUSTOM_CSS
+from src.changelog import CHANGELOG_MD
 from src.display import (
     display_item_market,
     display_market_activity,
@@ -170,6 +116,22 @@ def create_app() -> gr.Blocks:
     return app
 
 
+def update_sub_categories(main_cat_id: int):
+    """根據大分類更新子分類選項."""
+    if main_cat_id == 0 or main_cat_id not in ITEM_SUB_CATEGORIES:
+        return gr.update(choices=[("全部子分類", 0)], value=0, visible=False)
+
+    sub_cats = ITEM_SUB_CATEGORIES[main_cat_id]
+    choices = [("全部子分類", 0)] + [(name, cid) for cid, name in sub_cats.items()]
+    return gr.update(choices=choices, value=0, visible=True)
+
+
+def get_effective_category(sub_cat: int) -> int:
+    """取得實際要查詢的分類 ID."""
+    # 如果有選擇子分類，使用子分類；否則不加分類限制
+    return sub_cat if sub_cat > 0 else 0
+
+
 def _build_market_tab() -> None:
     """建立市場查詢頁籤."""
     with gr.TabItem("市場查詢"):
@@ -184,6 +146,29 @@ def _build_market_tab() -> None:
                     placeholder="繁體中文、英文名稱、物品 ID 或 Universalis 網址",
                     lines=1,
                 )
+
+                # 分類篩選區塊
+                gr.Markdown("#### 物品分類篩選")
+                with gr.Group():
+                    main_category = gr.Radio(
+                        label="大分類",
+                        choices=[
+                            ("全部", 0), ("武器", 1), ("製作工具", 2), ("採集工具", 3),
+                            ("防具", 4), ("飾品", 5), ("藥品食品", 6), ("素材", 7), ("其他", 8),
+                        ],
+                        value=0,
+                        interactive=True,
+                        elem_classes=["category-radio"],
+                    )
+
+                    sub_category = gr.Dropdown(
+                        label="子分類",
+                        choices=[("全部子分類", 0)],
+                        value=0,
+                        interactive=True,
+                        visible=False,
+                    )
+
                 search_status = gr.Markdown(
                     "顯示常用物品，或輸入物品名稱/ID搜尋"
                 )
@@ -195,6 +180,16 @@ def _build_market_tab() -> None:
                     ],
                     interactive=True,
                 )
+
+                # 分頁控制
+                with gr.Row():
+                    prev_page_btn = gr.Button("◀ 上一頁", size="sm")
+                    page_info = gr.Markdown("")
+                    next_page_btn = gr.Button("下一頁 ▶", size="sm")
+
+                # 分頁狀態
+                current_page_state = gr.State(value=1)
+                total_pages_state = gr.State(value=1)
 
             with gr.Column(scale=1):
                 world_select = gr.Dropdown(
@@ -219,7 +214,11 @@ def _build_market_tab() -> None:
                         value=False,
                     )
 
-        item_info = gr.Markdown("")
+        with gr.Row():
+            with gr.Column(scale=1):
+                item_info = gr.Markdown("")
+            with gr.Column(scale=1):
+                item_card = gr.Markdown("")
 
         with gr.Row():
             with gr.Column():
@@ -253,18 +252,70 @@ def _build_market_tab() -> None:
         # 自動刷新用的計時器 (5秒，使用 WebSocket 緩存)
         timer = gr.Timer(value=5, active=False)
 
+        # 輔助函數：根據分類搜尋（含分頁）
+        def search_with_category(query, sub_cat, page=1):
+            category = get_effective_category(sub_cat)
+            dropdown, status, info, cur_page, total_pages = search_and_display(query, category, page)
+
+            # 更新分頁資訊顯示
+            if total_pages > 1:
+                page_text = f"第 {cur_page} / {total_pages} 頁"
+            else:
+                page_text = ""
+
+            return dropdown, status, info, cur_page, total_pages, page_text
+
+        def go_prev_page(query, sub_cat, current_page, _total_pages):
+            if current_page > 1:
+                return search_with_category(query, sub_cat, current_page - 1)
+            return search_with_category(query, sub_cat, current_page)
+
+        def go_next_page(query, sub_cat, current_page, total_pages):
+            if current_page < total_pages:
+                return search_with_category(query, sub_cat, current_page + 1)
+            return search_with_category(query, sub_cat, current_page)
+
         # 事件綁定
+        # 大分類變更 -> 更新子分類選項
+        main_category.change(
+            fn=update_sub_categories,
+            inputs=[main_category],
+            outputs=[sub_category],
+        )
+
+        # 搜尋輸入變更時，帶入分類參數（重置到第一頁）
         search_input.change(
-            fn=search_and_display,
-            inputs=[search_input],
-            outputs=[item_dropdown, search_status, item_info],
+            fn=search_with_category,
+            inputs=[search_input, sub_category],
+            outputs=[item_dropdown, search_status, item_info, current_page_state, total_pages_state, page_info],
+        )
+
+        # 子分類變更 -> 重新搜尋（重置到第一頁）
+        sub_category.change(
+            fn=search_with_category,
+            inputs=[search_input, sub_category],
+            outputs=[item_dropdown, search_status, item_info, current_page_state, total_pages_state, page_info],
+        )
+
+        # 上一頁按鈕
+        prev_page_btn.click(
+            fn=go_prev_page,
+            inputs=[search_input, sub_category, current_page_state, total_pages_state],
+            outputs=[item_dropdown, search_status, item_info, current_page_state, total_pages_state, page_info],
+        )
+
+        # 下一頁按鈕
+        next_page_btn.click(
+            fn=go_next_page,
+            inputs=[search_input, sub_category, current_page_state, total_pages_state],
+            outputs=[item_dropdown, search_status, item_info, current_page_state, total_pages_state, page_info],
         )
 
         search_btn.click(
             fn=display_item_market,
             inputs=[item_dropdown, world_select, quality_select, retainer_filter],
             outputs=[
-                item_info, listings_table, history_table,
+                item_info, item_card, listings_table, history_table,
                 price_chart, comparison_table, comparison_chart,
             ],
         )
@@ -273,7 +324,7 @@ def _build_market_tab() -> None:
             fn=display_item_market,
             inputs=[item_dropdown, world_select, quality_select, retainer_filter],
             outputs=[
-                item_info, listings_table, history_table,
+                item_info, item_card, listings_table, history_table,
                 price_chart, comparison_table, comparison_chart,
             ],
         )
@@ -290,7 +341,7 @@ def _build_market_tab() -> None:
             fn=display_item_market,
             inputs=[item_dropdown, world_select, quality_select, retainer_filter],
             outputs=[
-                item_info, listings_table, history_table,
+                item_info, item_card, listings_table, history_table,
                 price_chart, comparison_table, comparison_chart,
             ],
         )
@@ -1144,78 +1195,7 @@ def _build_ai_tab() -> None:
 def _build_changelog_tab() -> None:
     """建立更新紀錄頁籤."""
     with gr.TabItem("更新紀錄"):
-        gr.Markdown("""
-### 📝 更新紀錄
-
-### v1.7.2 (2025-01)
-- 即時追蹤新增「資料流狀態」圖表
-- 顯示各伺服器最後收到資料的時間
-- 以顏色標示資料新鮮度（綠/黃/橙/紅）
-- 讓使用者了解資料延遲來源
-
-### v1.7.1 (2025-01)
-- 新增「即時追蹤」功能
-- 顯示繁中服正在發生的市場交易（上架、售出）
-- 數據由 Universalis WebSocket 即時推送
-- 支援自動刷新（3秒）
-
-### v1.7.0 (2025-01)
-- 介面美化：採用 Gradio Soft 主題
-- 新增金色漸層頁首設計
-- 伺服器標籤視覺化呈現
-- 圖表配色優化（NQ 藍灰色、HQ 琥珀金色）
-
-### v1.6.1 (2025-01)
-- 收藏品時間表新增「老主顧」NPC 資訊
-- 顯示對應等級範圍的老主顧名稱與位置座標
-- 新增「老主顧位置一覽」快速參考表
-
-### v1.6.0 (2025-01)
-- 新增「收藏品時間表」功能
-- 顯示大地使者（採礦工、園藝工、捕魚人）收藏品採集時間
-- 即時 ET（艾歐澤亞時間）顯示
-- 顯示目前可採集和即將出現的收藏品
-- 包含採集地點、座標、工票獎勵
-- 資料自動快取，支援強制刷新
-
-### v1.5.0 (2024-12)
-- 新增「購物助手」功能
-- 購物清單：輸入多個物品，計算各伺服器總價，找最便宜的購買方案
-- 雇員銷售建議：分析銷售速度與價格，推薦值得上架的物品
-
-### v1.4.0 (2024-12)
-- 新增「製作利潤」功能
-- 計算製作成本 vs 市場售價
-- 遞迴計算材料成本（比較買 vs 自己做）
-- 賺錢排行榜：動態掃描最近交易物品
-- 職業篩選（木工、鍛冶、裁縫、烹調等）
-
-### v1.3.0 (2024-12)
-- 改用 WebSocket 驅動實時更新
-- 首次查詢用 REST API，之後用 WebSocket 緩存
-- 自動刷新改為 5 秒（使用緩存時幾乎無延遲）
-- 物品資訊與市場數據並行請求
-
-### v1.2.0 (2024-12)
-- 新增 AI 分析功能
-- 支援跨服套利判斷
-- 手機版面優化
-
-### v1.1.0 (2024-12)
-- 新增監看清單功能
-- 支援設定目標價格提醒
-- 資料儲存於瀏覽器 LocalStorage
-
-### v1.0.0 (2024-12)
-- 首次發布
-- 支援繁體中文搜尋物品
-- 市場價格查詢、交易紀錄
-- 跨伺服器比價
-- 稅率資訊、上傳統計
-
----
-資料來源: [Universalis API](https://universalis.app/)
-        """)
+        gr.Markdown(CHANGELOG_MD)
 
 
 if __name__ == "__main__":

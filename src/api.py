@@ -44,18 +44,24 @@ def _extract_item_id(query: str) -> int:
     return 0
 
 
-def search_items(query: str, limit: int = 20) -> list:
+def search_items(query: str, limit: int = 20, category: int = 0, page: int = 1) -> dict:
     """搜尋物品 - 支援繁體中文、簡體中文、英文.
 
     Args:
         query: 搜尋關鍵字、物品 ID 或 Universalis 網址
-        limit: 結果數量限制
+        limit: 每頁結果數量限制
+        category: 物品分類 ID (ItemSearchCategory)，0 表示全部
+        page: 頁碼（從 1 開始）
 
     Returns:
-        物品列表，每個物品包含 id, name, icon, level
+        包含 items, pagination 的字典:
+        - items: 物品列表，每個物品包含 id, name, icon, level
+        - pagination: 分頁資訊 (page, page_total, results_total)
     """
+    empty_result = {"items": [], "pagination": {"page": 1, "page_total": 1, "results_total": 0}}
+
     if not query:
-        return []
+        return empty_result
 
     query = query.strip()
     results = []
@@ -71,22 +77,38 @@ def search_items(query: str, limit: int = 20) -> list:
                 "icon": "",
                 "level": item_info.get("LevelItem", 0),
             })
-            return results
+            return {"items": results, "pagination": {"page": 1, "page_total": 1, "results_total": 1}}
 
     # 2. 將繁體中文轉換為簡體中文（Cafemaker 使用簡體）
     query_simplified = _t2s_converter.convert(query)
 
     # 3. 使用 Cafemaker 搜尋（支援中文）
+    pagination = {"page": page, "page_total": 1, "results_total": 0}
     try:
         url = f"{CAFEMAKER_BASE}/search"
         params = {
             "string": query_simplified,
             "indexes": "Item",
             "limit": limit,
+            "page": page,
         }
+
+        # 如果有指定分類，加入篩選條件
+        if category > 0:
+            params["filters"] = f"ItemSearchCategory.ID={category}"
+
         response = requests.get(url, params=params, timeout=API_TIMEOUT)
         if response.status_code == 200:
             data = response.json()
+
+            # 取得分頁資訊
+            pag_info = data.get("Pagination", {})
+            pagination = {
+                "page": pag_info.get("Page", 1),
+                "page_total": pag_info.get("PageTotal", 1),
+                "results_total": pag_info.get("ResultsTotal", 0),
+            }
+
             for item in data.get("Results", []):
                 if not any(r["id"] == item.get("ID") for r in results):
                     # 將簡體中文名稱轉換為繁體中文
@@ -100,7 +122,7 @@ def search_items(query: str, limit: int = 20) -> list:
     except requests.RequestException as e:
         print(f"Cafemaker 搜尋錯誤: {e}")
 
-    return results[:limit]
+    return {"items": results, "pagination": pagination}
 
 
 def get_item_info(item_id: int) -> dict:
